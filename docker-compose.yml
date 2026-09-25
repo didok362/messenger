@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      - POSTGRES_USER=didok362
+      - POSTGRES_PASSWORD=qwerty67
+      - POSTGRES_DB=messenger_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+      
+volumes:
+  pgdata:
