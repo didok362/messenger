@@ -23,13 +23,20 @@ func main() {
 	}
 	defer pool.Close()
 
-	// 2. Инициализация слоев (Clean Architecture)
+	jwtSecret := "super-secret-jwt-key"
+
+	// 2. Инициализация репозиториев и сервисов
 	userRepo := postgres.NewUserRepository(pool)
-	authService := service.NewAuthService(userRepo, "super-secret-jwt-key", 24*time.Hour)
+	authService := service.NewAuthService(userRepo, jwtSecret, 24*time.Hour)
 	authHandler := transporthttp.NewAuthHandler(authService)
 
-	// 3. Роутер
-	router := transporthttp.NewRouter(authHandler)
+	chatRepo := postgres.NewChatRepository(pool)
+	msgRepo := postgres.NewMessageRepository(pool)
+	chatService := service.NewChatService(chatRepo, msgRepo)
+	chatHandler := transporthttp.NewChatHandler(chatService)
+
+	// 3. Роутер со всеми хендлерами и секретом
+	router := transporthttp.NewRouter(authHandler, chatHandler, []byte(jwtSecret))
 
 	// 4. Старт HTTP сервера
 	port := ":8080"
