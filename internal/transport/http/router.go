@@ -12,19 +12,23 @@ func NewRouter(authHandler *AuthHandler, chatHandler *ChatHandler, jwtSecret []b
 	r.Use(middleware.Recoverer)
 
 	r.Route("/api", func(r chi.Router) {
-		// Публичные маршруты
-		r.Route("/auth", func(r chi.Router) {
-			r.Post("/register", authHandler.Register)
-			r.Post("/login", authHandler.Login)
-		})
+		r.Route("/v1", func(r chi.Router) {
+			// Публичные маршруты
+			r.Route("/auth", func(r chi.Router) {
+				r.Post("/register", authHandler.Register)
+				r.Post("/login", authHandler.Login)
+			})
+			// Защищённые маршруты
+			r.Group(func(r chi.Router) {
+				r.Use(AuthMiddleware(jwtSecret))
 
-		// Защищённые маршруты (требуют JWT токен)
-		r.Group(func(r chi.Router) {
-			r.Use(AuthMiddleware(jwtSecret))
+				r.Route("/chats", func(r chi.Router) {
+					r.Get("/", chatHandler.GetUserChats)
+					r.Post("/direct", chatHandler.CreateDirect)
 
-			r.Route("/chats", func(r chi.Router) {
-				r.Get("/", chatHandler.GetUserChats)
-				r.Post("/direct", chatHandler.CreateDirect)
+					r.Get("/{id}/messages", chatHandler.GetChatMessages)
+					r.Post("/{id}/messages", chatHandler.SendMessage)
+				})
 			})
 		})
 	})
