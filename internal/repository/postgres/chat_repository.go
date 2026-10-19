@@ -113,9 +113,9 @@ func (r *ChatRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Cha
 
 func (r *ChatRepository) IsMember(ctx context.Context, chatID uuid.UUID, userID uuid.UUID) (bool, error) {
 	query := ` 
-	SELECT EXISTS(
-    SELECT 1 FROM chat_members 
-    WHERE chat_id = $1 AND user_id = $2)
+		SELECT EXISTS(
+		SELECT 1 FROM chat_members 
+		WHERE chat_id = $1 AND user_id = $2)
 	`
 	var exists bool
 	err := r.pool.QueryRow(ctx, query, chatID, userID).Scan(&exists)
@@ -123,4 +123,27 @@ func (r *ChatRepository) IsMember(ctx context.Context, chatID uuid.UUID, userID 
 		return false, fmt.Errorf("failed to check membership: %w", err)
 	}
 	return exists, nil
+}
+
+func (r *ChatRepository) GetDirectChatBetweenUsers(ctx context.Context, user1ID, user2ID uuid.UUID) (*domain.Chat, error) {
+	query := `
+		SELECT c.id, c.title, c.type, c.created_at, c.updated_at
+		FROM chats c
+		JOIN chat_members cm1 ON c.id = cm1.chat_id AND cm1.user_id = $1
+		JOIN chat_members cm2 ON c.id = cm2.chat_id AND cm2.user_id = $2
+		WHERE c.type = 'direct'
+		LIMIT 1;
+	`
+
+	var chat domain.Chat
+
+	err := r.pool.QueryRow(ctx, query, user1ID, user2ID).Scan(&chat.ID, &chat.Title, &chat.Type, &chat.CreatedAt, &chat.UpdatedAt)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrChatNotFound
+		}
+		return nil, fmt.Errorf("failed to get chat: %w", err)
+	}
+	return &chat, nil
 }

@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Go Messenger Live</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 h-screen w-screen overflow-hidden font-sans select-none">
+
+  <!-- 1. ЭКРАН ВХОДА -->
+  <div id="auth-screen" style="display: flex;" class="items-center justify-center h-full p-4">
+    <div class="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl max-w-sm w-full flex flex-col gap-4">
+      <h1 class="text-xl font-bold text-center text-blue-400">⚡ Go Messenger Live</h1>
+      <p class="text-xs text-slate-400 text-center">Выбери устройство для входа:</p>
+      
+      <div class="flex flex-col gap-2">
+        <button onclick="quickAuth('pc@test.com', 'qwerty1234', 'pc_user')" class="bg-blue-600 hover:bg-blue-500 py-3 rounded-xl text-sm font-semibold transition">
+          💻 Войти как pc_user (ПК)
+        </button>
+        <button onclick="quickAuth('phone@test.com', 'qwerty1234', 'phone_user')" class="bg-purple-600 hover:bg-purple-500 py-3 rounded-xl text-sm font-semibold transition">
+          📱 Войти как phone_user (Телефон)
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. ГЛАВНЫЙ ЭКРАН (САЙДБАР СЛЕВА + ЧАТ СПРАВА) -->
+  <div id="main-screen" style="display: none;" class="h-full w-full flex-col md:flex-row overflow-hidden">
+    
+    <!-- ЛЕВАЯ КОЛОНКА (САЙДБАР) -->
+    <div id="sidebar" class="w-full md:w-80 bg-slate-900 border-r border-slate-800 flex flex-col h-full flex-shrink-0">
+      
+      <!-- Шапка сайдбара -->
+      <div class="p-3.5 border-b border-slate-800 flex justify-between items-center bg-slate-900/90">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center font-bold text-xs" id="avatar-badge">U</div>
+          <div>
+            <div class="text-xs font-bold leading-tight" id="user-badge">user</div>
+            <div class="text-[10px] text-green-400 font-medium leading-none flex items-center gap-1">
+              <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span> online
+            </div>
+          </div>
+        </div>
+        <button onclick="logout()" class="text-xs text-red-400 hover:text-red-300 font-medium px-2 py-1 rounded hover:bg-slate-800 transition">Выйти</button>
+      </div>
+
+      <!-- Создание нового диалога -->
+      <div class="p-3 border-b border-slate-800 bg-slate-950/40">
+        <div class="text-[10px] uppercase font-semibold text-slate-400 mb-1.5">Новый диалог</div>
+        <form onsubmit="createChat(event)" class="flex gap-1.5">
+          <input id="target-username-input" type="text" placeholder="Введите username..." class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500">
+          <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition">Начать</button>
+        </form>
+      </div>
+
+      <!-- Список диалогов -->
+      <div class="flex-1 overflow-y-auto flex flex-col p-2 gap-1.5" id="chat-list">
+        <div class="text-xs text-slate-500 text-center my-4">Загрузка диалогов...</div>
+      </div>
+    </div>
+
+    <!-- ПРАВАЯ КОЛОНКА (ОКНО ЧАТА) -->
+    <div id="chat-area" class="flex-1 flex flex-col h-full bg-slate-950 overflow-hidden">
+      
+      <!-- Шапка активного чата -->
+      <div class="p-3 bg-slate-900/80 border-b border-slate-800 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <button onclick="showSidebarOnMobile()" class="md:hidden text-xs text-blue-400 hover:underline">← Чаты</button>
+          <div>
+            <div class="text-sm font-semibold" id="active-chat-title">Диалог</div>
+            <div class="text-[10px] text-slate-500 font-mono" id="active-chat-id">ID: -</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Лента сообщений -->
+      <div id="messages" class="flex-1 overflow-y-auto p-4 flex flex-col gap-2.5">
+        <div class="text-xs text-slate-500 text-center my-auto">Выберите диалог слева!</div>
+      </div>
+
+      <!-- Поле ввода -->
+      <form onsubmit="sendMessage(event)" class="p-3 bg-slate-900 border-t border-slate-800 flex gap-2">
+        <input id="msg-input" type="text" placeholder="Напишите сообщение..." autocomplete="off" class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+        <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white px-5 rounded-xl font-medium text-sm transition">Отправить</button>
+      </form>
+    </div>
+
+  </div>
+
+  <script>
+    let token = localStorage.getItem('token');
+    let currentUser = localStorage.getItem('username') || '';
+    let currentChatId = null;
+    let ws = null;
+
+    function getMyId() {
+      if (!token) return null;
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        return payload.sub;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    if (token && currentUser) {
+      showApp();
+    } else {
+      document.getElementById('auth-screen').style.display = 'flex';
+      document.getElementById('main-screen').style.display = 'none';
+    }
+
+    async function quickAuth(email, password, username) {
+      try {
+        let res = await fetch('/api/v1/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+
+        if (res.status === 401 || res.status === 404) {
+          await fetch('/api/v1/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, email, password })
+          });
+          res = await fetch('/api/v1/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+          });
+        }
+
+        const data = await res.json();
+        token = data.token;
+        currentUser = username;
+        localStorage.setItem('token', token);
+        localStorage.setItem('username', currentUser);
+        showApp();
+      } catch (err) {
+        alert('Ошибка входа: ' + err.message);
+      }
+    }
+
+    function showApp() {
+      document.getElementById('auth-screen').style.display = 'none';
+      document.getElementById('main-screen').style.display = 'flex';
+      document.getElementById('user-badge').innerText = '@' + (currentUser || 'user');
+      document.getElementById('avatar-badge').innerText = (currentUser || 'U')[0].toUpperCase();
+      connectWS();
+      loadChats(true);
+    }
+
+    function logout() {
+      localStorage.clear();
+      location.reload();
+    }
+
+    function showSidebarOnMobile() {
+      document.getElementById('sidebar').style.display = 'flex';
+      document.getElementById('chat-area').style.display = 'none';
+    }
+    // Загрузка списка диалогов
+    async function loadChats(autoSelectFirst = false) {
+      try {
+        const res = await fetch('/api/v1/chats', {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (!res.ok) return;
+
+        const data = await res.json();
+        // ВАЖНО: парсим { "chats": [...] }
+        const chats = data.chats || data || [];
+        const list = document.getElementById('chat-list');
+
+        if (!Array.isArray(chats) || chats.length === 0) {
+          list.innerHTML = '<div class="text-xs text-slate-500 text-center my-4">Нет диалогов. Введите username сверху!</div>';
+          return;
+        }
+
+        list.innerHTML = '';
+        chats.forEach((chat, idx) => {
+          const item = document.createElement('div');
+          const isSelected = chat.id === currentChatId;
+          item.className = `p-3000 rounded-xl cursor-pointer transition border ${
+            isSelected ? 'bg-blue-600/30 border-blue-500' : 'bg-slate-900 hover:bg-slate-800 border-slate-800'
+          }`;
+          item.innerHTML = `
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-xs text-slate-200">💬 Диалог #${idx + 1}</span>
+              <span class="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-mono">${chat.type}</span>
+            </div>
+            <div class="text-[10px] text-slate-500 font-mono truncate mt-1">ID: ${chat.id}</div>
+          `;
+          item.onclick = () => selectChat(chat.id, `Диалог #${idx + 1}`);
+          list.appendChild(item);
+        });
+
+        if (autoSelectFirst && !currentChatId && chats.length > 0) {
+          selectChat(chats[0].id, 'Диалог #1');
+        }
+      } catch (err) {
+        console.error('Ошибка загрузки чатов:', err);
+      }
+    }
+
+    // Создание диалога по TargetUsername
+    async function createChat(e) {
+      e.preventDefault();
+      const input = document.getElementById('target-username-input');
+      const targetUsername = input.value.trim();
+      if (!targetUsername) return;
+
+      try {
+        const res = await fetch('/api/v1/chats/direct', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token
+          },
+          body: JSON.stringify({ target_username: targetUsername })
+        });
+
+        if (!res.ok) {
+          const err = await res.text();
+          return alert('Ошибка создания чата: ' + err);
+        }
+
+        const data = await res.json();
+        const chat = data.chat;
+        input.value = '';
+        await loadChats(false);
+        selectChat(chat.id, `Диалог с @${targetUsername}`);
+      } catch (err) {
+        alert('Ошибка сети: ' + err.message);
+      }
+    }
+
+    // Выбор чата
+    async function selectChat(chatId, title = 'Диалог') {
+      currentChatId = chatId;
+      document.getElementById('active-chat-title').innerText = title;
+      document.getElementById('active-chat-id').innerText = 'ID: ' + chatId;
+
+      // Мобильная адаптация
+      if (window.innerWidth < 768) {
+        document.getElementById('sidebar').style.display = 'none';
+        document.getElementById('chat-area').style.display = 'flex';
+      }
+
+      // Обновляем подсветку карточек
+      document.querySelectorAll('#chat-list > div').forEach(el => {
+        if (el.innerHTML.includes(chatId)) {
+          el.className = 'p-3 rounded-xl cursor-pointer transition border bg-blue-600/30 border-blue-500';
+        } else {
+          el.className = 'p-3 rounded-xl cursor-pointer transition border bg-slate-900 hover:bg-slate-800 border-slate-800';
+        }
+      });
+
+      // Загрузка сообщений
+      const messagesBox = document.getElementById('messages');
+      messagesBox.innerHTML = '<div class="text-xs text-slate-500 text-center my-auto">Загрузка переписки...</div>';
+
+      try {
+        const res = await fetch(`/api/v1/chats/${chatId}/messages`, {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        messagesBox.innerHTML = '';
+        if (res.ok) {
+          const data = await res.json();
+          // ВАЖНО: парсим { "messages": [...] }
+          const msgs = data.messages || data || [];
+          if (Array.isArray(msgs) && msgs.length > 0) {
+            msgs.forEach(appendMessage);
+          } else {
+            messagesBox.innerHTML = '<div class="text-xs text-slate-500 text-center my-auto">Сообщений пока нет. Напишите первым!</div>';
+          }
+        }
+      } catch (err) {
+        console.error('Ошибка сообщений:', err);
+      }
+    }
+
+    // WebSocket подключение
+    function connectWS() {
+      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(`${proto}//${window.location.host}/api/v1/ws?token=${token}`);
+
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.chat_id === currentChatId) {
+          appendMessage(msg);
+        }
+        loadChats(false);
+      };
+      ws.onclose = () => setTimeout(connectWS, 2000);
+    }
+
+    // Отрисовка сообщения
+    function appendMessage(msg) {
+      const container = document.getElementById('messages');
+      if (container.children.length === 1 && container.children[0].innerText.includes('Сообщений пока нет')) {
+        container.innerHTML = '';
+      }
+
+      const myId = getMyId();
+      const isMe = msg.sender_id === myId;
+
+      const div = document.createElement('div');
+      div.className = `p-2.5 rounded-xl text-sm max-w-[80%] break-words ${
+        isMe ? 'bg-blue-600 text-white ml-auto rounded-br-none' : 'bg-slate-800 text-slate-200 mr-auto rounded-bl-none border border-slate-700'
+      }`;
+      div.innerText = msg.content;
+      container.appendChild(div);
+      container.scrollTop = container.scrollHeight;
+    }
+
+    // Отправка сообщения
+    function sendMessage(e) {
+      e.preventDefault();
+      const input = document.getElementById('msg-input');
+      const text = input.value.trim();
+      if (!text || !ws || !currentChatId) return;
+
+      ws.send(JSON.stringify({
+        chat_id: currentChatId,
+        content: text
+      }));
+
+      input.value = '';
+    }
+  </script>
+</body>
+</html>

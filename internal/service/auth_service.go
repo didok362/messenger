@@ -42,7 +42,7 @@ func (s *AuthService) Register(ctx context.Context, username, email, password st
 	} else if !errors.Is(err, domain.ErrUserNotFound) {
 		return nil, fmt.Errorf("failed to check email: %w", err)
 	}
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), 12)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encrypt password: %w", err)
 	}

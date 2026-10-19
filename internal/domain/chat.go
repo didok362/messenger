@@ -20,4 +20,5 @@ type ChatRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*Chat, error)
 	GetUserChats(ctx context.Context, userID uuid.UUID) ([]*Chat, error)
 	IsMember(ctx context.Context, chatID, userID uuid.UUID) (bool, error)
+	GetDirectChatBetweenUsers(ctx context.Context, user1ID, user2ID uuid.UUID) (*Chat, error)
 }

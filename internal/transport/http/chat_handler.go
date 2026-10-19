@@ -17,7 +17,8 @@ type ChatHandler struct {
 }
 
 type createDirectChatRequest struct {
-	TargetUserID uuid.UUID `json:"target_user_id"`
+	TargetUserID   uuid.UUID `json:"target_user_id"`
+	TargetUsername string    `json:"target_username"`
 }
 
 type sendMessageRequest struct {
@@ -29,22 +30,33 @@ func NewChatHandler(chatService *service.ChatService) *ChatHandler {
 }
 
 func (h *ChatHandler) CreateDirect(w http.ResponseWriter, r *http.Request) {
-	var req createDirectChatRequest
 	userID, ok := UserIDFromContext(r.Context())
 	if !ok {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
+
+	var req createDirectChatRequest
+
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
 		http.Error(w, "failed to decode request", http.StatusBadRequest)
 		return
 	}
-	chat, err := h.ChatService.CreateDirectChat(r.Context(), userID, req.TargetUserID)
+
+	var chat *domain.Chat
+
+	if req.TargetUsername != "" {
+		chat, err = h.ChatService.CreateDirectChatByUsername(r.Context(), userID, req.TargetUsername)
+	} else {
+		chat, err = h.ChatService.CreateDirectChat(r.Context(), userID, req.TargetUserID)
+	}
+
 	if err != nil {
 		http.Error(w, "faieled to create chat", http.StatusInternalServerError)
 		return
 	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	_ = json.NewEncoder(w).Encode(map[string]*domain.Chat{

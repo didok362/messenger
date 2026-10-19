@@ -13,12 +13,14 @@ import (
 type ChatService struct {
 	chatRepo domain.ChatRepository
 	msgRepo  domain.MessageRepository
+	userRepo domain.UserRepository
 }
 
-func NewChatService(chatRepo domain.ChatRepository, msgRepo domain.MessageRepository) *ChatService {
+func NewChatService(chatRepo domain.ChatRepository, msgRepo domain.MessageRepository, userRepo domain.UserRepository) *ChatService {
 	return &ChatService{
 		chatRepo: chatRepo,
 		msgRepo:  msgRepo,
+		userRepo: userRepo,
 	}
 }
 
@@ -32,6 +34,18 @@ func (s *ChatService) CreateDirectChat(ctx context.Context, user1ID, user2ID uui
 	}
 
 	return chat, nil
+}
+
+func (s *ChatService) CreateDirectChatByUsername(ctx context.Context, currentUserID uuid.UUID, targetUsername string) (*domain.Chat, error) {
+
+	targetUser, err := s.userRepo.GetByUsername(ctx, targetUsername)
+
+	if err != nil {
+		return nil, fmt.Errorf("faield to get user id: %w", err)
+	}
+
+	return s.CreateDirectChat(ctx, currentUserID, targetUser.ID)
+
 }
 
 func (s *ChatService) SendMessage(ctx context.Context, content string, chatID uuid.UUID, senderID uuid.UUID) (*domain.Message, error) {

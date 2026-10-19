@@ -63,3 +63,22 @@ func (r *UserRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Use
 
 	return &user, nil
 }
+
+func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*domain.User, error) {
+	query := `
+		SELECT id, username, email, password_hash, created_at 
+		FROM users 
+		WHERE username = $1
+	`
+
+	var user domain.User
+
+	if err := r.pool.QueryRow(ctx, query, username).Scan(&user.ID, &user.Username, &user.Email, &user.PasswordHash, &user.CreatedAt); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrUserNotFound
+		}
+		return nil, fmt.Errorf("failed to get user by the id: %w", err)
+	}
+
+	return &user, nil
+}

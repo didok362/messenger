@@ -10,6 +10,7 @@ import (
 	"github.com/didok362/messenger/internal/repository/postgres"
 	"github.com/didok362/messenger/internal/service"
 	transporthttp "github.com/didok362/messenger/internal/transport/http"
+	"github.com/didok362/messenger/internal/transport/ws"
 )
 
 func main() {
@@ -26,17 +27,22 @@ func main() {
 	jwtSecret := "super-secret-jwt-key"
 
 	// 2. Инициализация репозиториев и сервисов
+	hub := ws.NewHub()
+	go hub.Run()
+
 	userRepo := postgres.NewUserRepository(pool)
 	authService := service.NewAuthService(userRepo, jwtSecret, 24*time.Hour)
 	authHandler := transporthttp.NewAuthHandler(authService)
 
 	chatRepo := postgres.NewChatRepository(pool)
 	msgRepo := postgres.NewMessageRepository(pool)
-	chatService := service.NewChatService(chatRepo, msgRepo)
+	chatService := service.NewChatService(chatRepo, msgRepo, userRepo)
 	chatHandler := transporthttp.NewChatHandler(chatService)
 
+	wsHandler := ws.NewHandler(hub, chatService, []byte(jwtSecret))
+
 	// 3. Роутер со всеми хендлерами и секретом
-	router := transporthttp.NewRouter(authHandler, chatHandler, []byte(jwtSecret))
+	router := transporthttp.NewRouter(authHandler, chatHandler, wsHandler, []byte(jwtSecret))
 
 	// 4. Старт HTTP сервера
 	port := ":8080"
