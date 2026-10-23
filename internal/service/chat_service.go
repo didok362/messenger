@@ -28,9 +28,20 @@ func (s *ChatService) CreateDirectChat(ctx context.Context, user1ID, user2ID uui
 	if user1ID == user2ID {
 		return nil, errors.New("cannot create chat with yourself")
 	}
-	chat := &domain.Chat{Type: "direct", Title: nil}
+
+	chat, err := s.chatRepo.GetDirectChatBetweenUsers(ctx, user1ID, user2ID)
+
+	if err == nil {
+		return chat, nil
+	}
+
+	if !errors.Is(err, domain.ErrChatNotFound) {
+		return nil, fmt.Errorf("failed to check existing chat: %w", err)
+	}
+
+	chat = &domain.Chat{Type: "direct", Title: nil}
 	if err := s.chatRepo.Create(ctx, chat, []uuid.UUID{user1ID, user2ID}); err != nil {
-		return nil, fmt.Errorf("faield to create chat: %w", err)
+		return nil, fmt.Errorf("failed to create chat: %w", err)
 	}
 
 	return chat, nil
@@ -78,7 +89,18 @@ func (s *ChatService) CreateGroupChat(ctx context.Context, title string, creator
 		return nil, errors.New("group chat title cannot be empty")
 	}
 
-	allMembers := append(memberIDs, creatorID)
+	membersMap := make(map[uuid.UUID]struct{})
+
+	membersMap[creatorID] = struct{}{}
+
+	for _, id := range memberIDs {
+		membersMap[id] = struct{}{}
+	}
+
+	allMembers := make([]uuid.UUID, 0, len(membersMap))
+	for id := range membersMap {
+		allMembers = append(allMembers, id)
+	}
 
 	chat := &domain.Chat{
 		Title: &title,
@@ -90,6 +112,18 @@ func (s *ChatService) CreateGroupChat(ctx context.Context, title string, creator
 	}
 
 	return chat, nil
+}
+
+func (s *ChatService) CreateGroupChatByUsernames(ctx context.Context, title string, creatorID uuid.UUID, usernames []string) (*domain.Chat, error) {
+	memberIDs := make([]uuid.UUID, len(usernames))
+	for i, val := range usernames {
+		user, err := s.userRepo.GetByUsername(ctx, val)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get user: %w", err)
+		}
+		memberIDs[i] = user.ID
+	}
+	return s.CreateGroupChat(ctx, title, creatorID, memberIDs)
 }
 
 func (s *ChatService) GetUserChats(ctx context.Context, userID uuid.UUID) ([]*domain.Chat, error) {

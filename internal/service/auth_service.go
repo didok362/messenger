@@ -57,22 +57,21 @@ func (s *AuthService) Register(ctx context.Context, username, email, password st
 	return user, nil
 }
 
-func (s *AuthService) Login(ctx context.Context, email, password string) (string, error) {
-	user, err := s.userRepo.GetByEmail(ctx, email)
+func (s *AuthService) Login(ctx context.Context, username, password string) (string, *domain.User, error) {
+	user, err := s.userRepo.GetByUsername(ctx, username)
 	if err != nil {
 		if errors.Is(err, domain.ErrUserNotFound) {
-			return "", domain.ErrInvalidCredentials
+			return "", nil, domain.ErrInvalidCredentials
 		}
-		return "", fmt.Errorf("faile to get from repo by email: %w", err)
+		return "", nil, fmt.Errorf("failed to get from repo by username: %w", err)
 	}
 	err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password))
 	if err != nil {
-		return "", domain.ErrInvalidCredentials
+		return "", nil, domain.ErrInvalidCredentials
 	}
 	token, err := s.generateToken(user)
 	if err != nil {
-		return "", fmt.Errorf("faile to create JWT token: %w", err)
+		return "", nil, fmt.Errorf("faile to create JWT token: %w", err)
 	}
-	return token, nil
-
+	return token, user, nil
 }

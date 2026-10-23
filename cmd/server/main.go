@@ -38,11 +38,12 @@ func main() {
 	msgRepo := postgres.NewMessageRepository(pool)
 	chatService := service.NewChatService(chatRepo, msgRepo, userRepo)
 	chatHandler := transporthttp.NewChatHandler(chatService)
+	userHandler := transporthttp.NewUserHandler(userRepo)
 
 	wsHandler := ws.NewHandler(hub, chatService, []byte(jwtSecret))
 
 	// 3. Роутер со всеми хендлерами и секретом
-	router := transporthttp.NewRouter(authHandler, chatHandler, wsHandler, []byte(jwtSecret))
+	router := transporthttp.NewRouter(authHandler, chatHandler, wsHandler, userHandler, []byte(jwtSecret))
 
 	// 4. Старт HTTP сервера
 	port := ":8080"

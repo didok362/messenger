@@ -52,15 +52,16 @@ func (r *ChatRepository) Create(ctx context.Context, chat *domain.Chat, memberID
 func (r *ChatRepository) GetUserChats(ctx context.Context, userID uuid.UUID) ([]*domain.Chat, error) {
 	query := `
 		SELECT 
-			chats.id, 
-			chats.title, 
-			chats.type, 
-			chats.created_at, 
-			chats.updated_at
-		FROM chats
-		JOIN chat_members ON chats.id = chat_members.chat_id
-		WHERE chat_members.user_id = $1
-		ORDER BY chats.updated_at DESC
+			c.id, 
+			COALESCE(c.title, u.username) AS title, 
+			c.type, 
+			c.created_at, 
+			c.updated_at
+		FROM chats c
+		JOIN chat_members cm ON c.id = cm.chat_id AND cm.user_id = $1
+		LEFT JOIN chat_members cm_other ON c.id = cm_other.chat_id AND cm_other.user_id != $1 AND c.type = 'direct'
+		LEFT JOIN users u ON cm_other.user_id = u.id
+		ORDER BY c.updated_at DESC
 	`
 	rows, err := r.pool.Query(ctx, query, userID)
 	if err != nil {

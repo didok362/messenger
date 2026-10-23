@@ -16,7 +16,7 @@ type registerRequest struct {
 }
 
 type loginRequest struct {
-	Email    string `json:"email"`
+	Username string `json:"username"`
 	Password string `json:"password"`
 }
 
@@ -54,10 +54,10 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid request body", http.StatusBadRequest) // 400
 		return
 	}
-	token, err := h.authService.Login(r.Context(), req.Email, req.Password)
+	token, user, err := h.authService.Login(r.Context(), req.Username, req.Password)
 	if err != nil {
 		if errors.Is(err, domain.ErrInvalidCredentials) {
-			http.Error(w, "invalid email or password", http.StatusUnauthorized)
+			http.Error(w, "invalid username or password", http.StatusUnauthorized)
 			return
 		}
 		http.Error(w, "internal server errror", http.StatusInternalServerError)
@@ -65,7 +65,8 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(map[string]string{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"token": token,
+		"user":  user,
 	})
 }

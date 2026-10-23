@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/didok362/messenger/internal/domain"
 	"github.com/didok362/messenger/internal/service"
@@ -19,6 +20,11 @@ type ChatHandler struct {
 type createDirectChatRequest struct {
 	TargetUserID   uuid.UUID `json:"target_user_id"`
 	TargetUsername string    `json:"target_username"`
+}
+
+type createGroupChatRequest struct {
+	Title     string      `json:"title"`
+	MemberIDs []uuid.UUID `json:"member_ids"`
 }
 
 type sendMessageRequest struct {
@@ -141,5 +147,38 @@ func (h *ChatHandler) GetChatMessages(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"messages": messages,
+	})
+}
+
+func (h *ChatHandler) CreateGroupChat(w http.ResponseWriter, r *http.Request) {
+	CreatorID, ok := UserIDFromContext(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var req createGroupChatRequest
+
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		http.Error(w, "failed to decode request", http.StatusBadRequest)
+		return
+	}
+
+	if strings.TrimSpace(req.Title) == "" {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	chat, err := h.ChatService.CreateGroupChat(r.Context(), req.Title, CreatorID, req.MemberIDs)
+
+	if err != nil {
+		http.Error(w, "failed to create chat", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(map[string]*domain.Chat{
+		"chat": chat,
 	})
 }

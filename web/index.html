@@ -3,25 +3,60 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Go Messenger Live</title>
+  <title>Go Messenger Enterprise</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-slate-950 text-slate-100 h-screen w-screen overflow-hidden font-sans select-none">
 
-  <!-- 1. ЭКРАН ВХОДА -->
+  <!-- 1. ЭКРАН АВТОРИЗАЦИИ / РЕГИСТРАЦИИ -->
   <div id="auth-screen" style="display: flex;" class="items-center justify-center h-full p-4">
     <div class="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl max-w-sm w-full flex flex-col gap-4">
-      <h1 class="text-xl font-bold text-center text-blue-400">⚡ Go Messenger Live</h1>
-      <p class="text-xs text-slate-400 text-center">Выбери устройство для входа:</p>
-      
-      <div class="flex flex-col gap-2">
-        <button onclick="quickAuth('pc@test.com', 'qwerty1234', 'pc_user')" class="bg-blue-600 hover:bg-blue-500 py-3 rounded-xl text-sm font-semibold transition">
-          💻 Войти как pc_user (ПК)
-        </button>
-        <button onclick="quickAuth('phone@test.com', 'qwerty1234', 'phone_user')" class="bg-purple-600 hover:bg-purple-500 py-3 rounded-xl text-sm font-semibold transition">
-          📱 Войти как phone_user (Телефон)
-        </button>
+      <div class="text-center">
+        <h1 class="text-2xl font-bold text-blue-500 tracking-tight">⚡ Go Messenger</h1>
+        <p class="text-xs text-slate-400 mt-1">Enterprise Architecture MVP</p>
       </div>
+
+      <!-- Переключатель Вход / Регистрация -->
+      <div class="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-semibold">
+        <button id="tab-login-btn" onclick="setAuthTab('login')" class="flex-1 py-1.5 rounded-lg bg-blue-600 text-white transition">Вход</button>
+        <button id="tab-reg-btn" onclick="setAuthTab('register')" class="flex-1 py-1.5 rounded-lg text-slate-400 hover:text-white transition">Регистрация</button>
+      </div>
+
+      <div id="auth-error" class="hidden text-xs text-red-400 bg-red-950/40 border border-red-900/50 p-2.5 rounded-xl text-center"></div>
+
+      <!-- Форма Входа -->
+      <form id="login-form" onsubmit="handleLogin(event)" class="flex flex-col gap-3">
+        <div>
+          <label class="text-[11px] text-slate-400 block mb-1">Username (никнейм)</label>
+          <input id="login-username" type="text" required placeholder="alex_pro" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500 transition">
+        </div>
+        <div>
+          <label class="text-[11px] text-slate-400 block mb-1">Пароль</label>
+          <input id="login-password" type="password" required placeholder="••••••••" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500 transition">
+        </div>
+        <button type="submit" class="mt-2 bg-blue-600 hover:bg-blue-500 text-white py-2.5 rounded-xl text-xs font-bold transition shadow-lg shadow-blue-600/20">
+          Войти
+        </button>
+      </form>
+
+      <!-- Форма Регистрации -->
+      <form id="register-form" onsubmit="handleRegister(event)" class="hidden flex-col gap-3">
+        <div>
+          <label class="text-[11px] text-slate-400 block mb-1">Username (никнейм)</label>
+          <input id="reg-username" type="text" required placeholder="alex_pro" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500 transition">
+        </div>
+        <div>
+          <label class="text-[11px] text-slate-400 block mb-1">Email</label>
+          <input id="reg-email" type="email" required placeholder="alex@test.com" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500 transition">
+        </div>
+        <div>
+          <label class="text-[11px] text-slate-400 block mb-1">Пароль</label>
+          <input id="reg-password" type="password" required placeholder="••••••••" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500 transition">
+        </div>
+        <button type="submit" class="mt-2 bg-green-600 hover:bg-green-500 text-white py-2.5 rounded-xl text-xs font-bold transition shadow-lg shadow-green-600/20">
+          Зарегистрироваться
+        </button>
+      </form>
     </div>
   </div>
 
@@ -31,26 +66,40 @@
     <!-- ЛЕВАЯ КОЛОНКА (САЙДБАР) -->
     <div id="sidebar" class="w-full md:w-80 bg-slate-900 border-r border-slate-800 flex flex-col h-full flex-shrink-0">
       
-      <!-- Шапка сайдбара -->
+      <!-- Профиль текущего пользователя -->
       <div class="p-3.5 border-b border-slate-800 flex justify-between items-center bg-slate-900/90">
         <div class="flex items-center gap-2.5">
-          <div class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center font-bold text-xs" id="avatar-badge">U</div>
+          <div class="w-9 h-9 rounded-full bg-blue-600/20 border border-blue-500/30 flex items-center justify-center font-bold text-sm text-blue-400" id="avatar-badge">U</div>
           <div>
             <div class="text-xs font-bold leading-tight" id="user-badge">user</div>
-            <div class="text-[10px] text-green-400 font-medium leading-none flex items-center gap-1">
-              <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span> online
+            <div class="text-[10px] text-emerald-400 font-medium leading-none flex items-center gap-1 mt-0.5">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> онлайн
             </div>
           </div>
         </div>
-        <button onclick="logout()" class="text-xs text-red-400 hover:text-red-300 font-medium px-2 py-1 rounded hover:bg-slate-800 transition">Выйти</button>
+        <button onclick="logout()" class="text-xs text-slate-400 hover:text-red-400 px-2 py-1 rounded-lg hover:bg-slate-800 transition">Выйти</button>
       </div>
 
-      <!-- Создание нового диалога -->
-      <div class="p-3 border-b border-slate-800 bg-slate-950/40">
-        <div class="text-[10px] uppercase font-semibold text-slate-400 mb-1.5">Новый диалог</div>
-        <form onsubmit="createChat(event)" class="flex gap-1.5">
-          <input id="target-username-input" type="text" placeholder="Введите username..." class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500">
+      <!-- Панель создания чатов -->
+      <div class="p-3 border-b border-slate-800 bg-slate-950/40 flex flex-col gap-2">
+        <div class="flex gap-1 bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[11px] font-medium">
+          <button id="mode-direct-btn" onclick="setCreateMode('direct')" class="flex-1 py-1 rounded bg-blue-600 text-white transition">Личный чат</button>
+          <button id="mode-group-btn" onclick="setCreateMode('group')" class="flex-1 py-1 text-slate-400 hover:text-white transition">Группа</button>
+        </div>
+
+        <!-- Создание личного чата -->
+        <form id="create-direct-form" onsubmit="handleCreateDirect(event)" class="flex gap-1.5">
+          <input id="direct-username-input" type="text" required placeholder="Никнейм собеседника (например bob)" class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500">
           <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition">Начать</button>
+        </form>
+
+        <!-- Создание группового чата -->
+        <form id="create-group-form" onsubmit="handleCreateGroup(event)" class="hidden flex-col gap-1.5">
+          <input id="group-title-input" type="text" required placeholder="Название группы..." class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500">
+          <div class="flex gap-1.5">
+            <input id="group-members-input" type="text" required placeholder="Участники: alice, bob" class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500">
+            <button type="submit" class="bg-green-600 hover:bg-green-500 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition">Создать</button>
+          </div>
         </form>
       </div>
 
@@ -68,7 +117,9 @@
         <div class="flex items-center gap-3">
           <button onclick="showSidebarOnMobile()" class="md:hidden text-xs text-blue-400 hover:underline">← Чаты</button>
           <div>
-            <div class="text-sm font-semibold" id="active-chat-title">Диалог</div>
+            <div class="text-sm font-semibold flex items-center gap-2" id="active-chat-title">
+              <span>Выберите диалог</span>
+            </div>
             <div class="text-[10px] text-slate-500 font-mono" id="active-chat-id">ID: -</div>
           </div>
         </div>
@@ -76,13 +127,13 @@
 
       <!-- Лента сообщений -->
       <div id="messages" class="flex-1 overflow-y-auto p-4 flex flex-col gap-2.5">
-        <div class="text-xs text-slate-500 text-center my-auto">Выберите диалог слева!</div>
+        <div class="text-xs text-slate-500 text-center my-auto">Выберите чат в меню слева!</div>
       </div>
 
       <!-- Поле ввода -->
       <form onsubmit="sendMessage(event)" class="p-3 bg-slate-900 border-t border-slate-800 flex gap-2">
-        <input id="msg-input" type="text" placeholder="Напишите сообщение..." autocomplete="off" class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
-        <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white px-5 rounded-xl font-medium text-sm transition">Отправить</button>
+        <input id="msg-input" type="text" placeholder="Напишите сообщение..." autocomplete="off" class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500">
+        <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white px-5 rounded-xl font-medium text-sm transition shadow-lg shadow-blue-600/20">Отправить</button>
       </form>
     </div>
 
@@ -111,35 +162,120 @@
       document.getElementById('main-screen').style.display = 'none';
     }
 
-    async function quickAuth(email, password, username) {
+    function setAuthTab(tab) {
+      const loginForm = document.getElementById('login-form');
+      const regForm = document.getElementById('register-form');
+      const loginBtn = document.getElementById('tab-login-btn');
+      const regBtn = document.getElementById('tab-reg-btn');
+      const errBox = document.getElementById('auth-error');
+      errBox.classList.add('hidden');
+
+      if (tab === 'login') {
+        loginForm.classList.remove('hidden');
+        loginForm.classList.add('flex');
+        regForm.classList.add('hidden');
+        regForm.classList.remove('flex');
+        loginBtn.className = 'flex-1 py-1.5 rounded-lg bg-blue-600 text-white transition';
+        regBtn.className = 'flex-1 py-1.5 rounded-lg text-slate-400 hover:text-white transition';
+      } else {
+        regForm.classList.remove('hidden');
+        regForm.classList.add('flex');
+        loginForm.classList.add('hidden');
+        loginForm.classList.remove('flex');
+        regBtn.className = 'flex-1 py-1.5 rounded-lg bg-green-600 text-white transition';
+        loginBtn.className = 'flex-1 py-1.5 rounded-lg text-slate-400 hover:text-white transition';
+      }
+    }
+
+    function showAuthError(msg) {
+      const errBox = document.getElementById('auth-error');
+      errBox.innerText = msg;
+      errBox.classList.remove('hidden');
+    }
+
+    async function handleLogin(e) {
+      e.preventDefault();
+      const username = document.getElementById('login-username').value.trim();
+      const password = document.getElementById('login-password').value.trim();
+
       try {
-        let res = await fetch('/api/v1/auth/login', {
+        const res = await fetch('/api/v1/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password })
+          body: JSON.stringify({ username, password })
         });
 
-        if (res.status === 401 || res.status === 404) {
-          await fetch('/api/v1/auth/register', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, email, password })
-          });
-          res = await fetch('/api/v1/auth/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password })
-          });
+        if (!res.ok) {
+          const text = await res.text();
+          return showAuthError(text || 'Неверный никнейм или пароль');
         }
 
         const data = await res.json();
         token = data.token;
-        currentUser = username;
+        currentUser = (data.user && data.user.username) ? data.user.username : username;
         localStorage.setItem('token', token);
         localStorage.setItem('username', currentUser);
         showApp();
       } catch (err) {
-        alert('Ошибка входа: ' + err.message);
+        showAuthError('Ошибка сети: ' + err.message);
+      }
+    }
+
+    async function handleRegister(e) {
+      e.preventDefault();
+      const username = document.getElementById('reg-username').value.trim();
+      const email = document.getElementById('reg-email').value.trim();
+      const password = document.getElementById('reg-password').value.trim();
+
+      try {
+        const res = await fetch('/api/v1/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, email, password })
+        });
+
+        if (!res.ok) {
+          const text = await res.text();
+          return showAuthError(text || 'Ошибка регистрации');
+        }
+
+        // После успешной регистрации сразу логиним по юзернейму
+        const loginRes = await fetch('/api/v1/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+        const loginData = await loginRes.json();
+        token = loginData.token;
+        currentUser = (loginData.user && loginData.user.username) ? loginData.user.username : username;
+        localStorage.setItem('token', token);
+        localStorage.setItem('username', currentUser);
+        showApp();
+      } catch (err) {
+        showAuthError('Ошибка сети: ' + err.message);
+      }
+    }
+
+    function setCreateMode(mode) {
+      const directForm = document.getElementById('create-direct-form');
+      const groupForm = document.getElementById('create-group-form');
+      const directBtn = document.getElementById('mode-direct-btn');
+      const groupBtn = document.getElementById('mode-group-btn');
+
+      if (mode === 'direct') {
+        directForm.classList.remove('hidden');
+        directForm.classList.add('flex');
+        groupForm.classList.add('hidden');
+        groupForm.classList.remove('flex');
+        directBtn.className = 'flex-1 py-1 rounded bg-blue-600 text-white transition';
+        groupBtn.className = 'flex-1 py-1 text-slate-400 hover:text-white transition';
+      } else {
+        groupForm.classList.remove('hidden');
+        groupForm.classList.add('flex');
+        directForm.classList.add('hidden');
+        directForm.classList.remove('flex');
+        groupBtn.className = 'flex-1 py-1 rounded bg-green-600 text-white transition';
+        directBtn.className = 'flex-1 py-1 text-slate-400 hover:text-white transition';
       }
     }
 
@@ -161,6 +297,7 @@
       document.getElementById('sidebar').style.display = 'flex';
       document.getElementById('chat-area').style.display = 'none';
     }
+
     // Загрузка списка диалогов
     async function loadChats(autoSelectFirst = false) {
       try {
@@ -170,12 +307,11 @@
         if (!res.ok) return;
 
         const data = await res.json();
-        // ВАЖНО: парсим { "chats": [...] }
-        const chats = data.chats || data || [];
+        const chats = data.chats || [];
         const list = document.getElementById('chat-list');
 
         if (!Array.isArray(chats) || chats.length === 0) {
-          list.innerHTML = '<div class="text-xs text-slate-500 text-center my-4">Нет диалогов. Введите username сверху!</div>';
+          list.innerHTML = '<div class="text-xs text-slate-500 text-center my-4">Нет чатов. Создайте диалог сверху!</div>';
           return;
         }
 
@@ -183,43 +319,58 @@
         chats.forEach((chat, idx) => {
           const item = document.createElement('div');
           const isSelected = chat.id === currentChatId;
-          item.className = `p-3000 rounded-xl cursor-pointer transition border ${
+          const isGroup = chat.type === 'group';
+          const title = isGroup ? `👥 ${chat.title || 'Группа'}` : `💬 @${chat.title || 'Собеседник'}`;
+
+          item.className = `p-3 rounded-xl cursor-pointer transition border ${
             isSelected ? 'bg-blue-600/30 border-blue-500' : 'bg-slate-900 hover:bg-slate-800 border-slate-800'
           }`;
           item.innerHTML = `
             <div class="flex items-center justify-between">
-              <span class="font-bold text-xs text-slate-200">💬 Диалог #${idx + 1}</span>
-              <span class="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-mono">${chat.type}</span>
+              <span class="font-bold text-xs text-slate-200 truncate">${title}</span>
+              <span class="text-[9px] px-1.5 py-0.5 rounded ${isGroup ? 'bg-purple-900/50 text-purple-300' : 'bg-blue-900/50 text-blue-300'} font-mono">${chat.type}</span>
             </div>
             <div class="text-[10px] text-slate-500 font-mono truncate mt-1">ID: ${chat.id}</div>
           `;
-          item.onclick = () => selectChat(chat.id, `Диалог #${idx + 1}`);
+          item.onclick = () => selectChat(chat.id, title);
           list.appendChild(item);
         });
 
         if (autoSelectFirst && !currentChatId && chats.length > 0) {
-          selectChat(chats[0].id, 'Диалог #1');
+          const first = chats[0];
+          selectChat(first.id, first.type === 'group' ? `👥 ${first.title || 'Группа'}` : `💬 @${first.title || 'Собеседник'}`);
         }
       } catch (err) {
         console.error('Ошибка загрузки чатов:', err);
       }
     }
 
-    // Создание диалога по TargetUsername
-    async function createChat(e) {
+    // Создание личного чата
+    async function handleCreateDirect(e) {
       e.preventDefault();
-      const input = document.getElementById('target-username-input');
+      const input = document.getElementById('direct-username-input');
       const targetUsername = input.value.trim();
       if (!targetUsername) return;
 
       try {
+        // 1. Enterprise User Lookup
+        const userRes = await fetch(`/api/v1/users/by-username?username=${encodeURIComponent(targetUsername)}`, {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (!userRes.ok) {
+          return alert(`Пользователь @${targetUsername} не найден!`);
+        }
+        const userData = await userRes.json();
+        const targetUserId = userData.user.id;
+
+        // 2. Создание или получение существующего диалога
         const res = await fetch('/api/v1/chats/direct', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer ' + token
           },
-          body: JSON.stringify({ target_username: targetUsername })
+          body: JSON.stringify({ target_user_id: targetUserId })
         });
 
         if (!res.ok) {
@@ -228,10 +379,62 @@
         }
 
         const data = await res.json();
-        const chat = data.chat;
         input.value = '';
         await loadChats(false);
-        selectChat(chat.id, `Диалог с @${targetUsername}`);
+        selectChat(data.chat.id, `💬 @${targetUsername}`);
+      } catch (err) {
+        alert('Ошибка сети: ' + err.message);
+      }
+    }
+
+    // Создание группового чата
+    async function handleCreateGroup(e) {
+      e.preventDefault();
+      const titleInput = document.getElementById('group-title-input');
+      const membersInput = document.getElementById('group-members-input');
+      const title = titleInput.value.trim();
+      const rawUsernames = membersInput.value.split(',').map(s => s.trim()).filter(Boolean);
+
+      if (!title) return alert('Укажите название группы!');
+      if (rawUsernames.length === 0) return alert('Укажите хотя бы одного участника!');
+
+      try {
+        // 1. Резолвим UUID всех участников через /users/by-username
+        const memberIds = [];
+        for (const u of rawUsernames) {
+          const userRes = await fetch(`/api/v1/users/by-username?username=${encodeURIComponent(u)}`, {
+            headers: { 'Authorization': 'Bearer ' + token }
+          });
+          if (!userRes.ok) {
+            return alert(`Участник @${u} не найден в системе!`);
+          }
+          const userData = await userRes.json();
+          memberIds.push(userData.user.id);
+        }
+
+        // 2. Создаем группу
+        const res = await fetch('/api/v1/chats/group', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token
+          },
+          body: JSON.stringify({
+            title: title,
+            member_ids: memberIds
+          })
+        });
+
+        if (!res.ok) {
+          const err = await res.text();
+          return alert('Ошибка создания группы: ' + err);
+        }
+
+        const data = await res.json();
+        titleInput.value = '';
+        membersInput.value = '';
+        await loadChats(false);
+        selectChat(data.chat.id, `👥 ${title}`);
       } catch (err) {
         alert('Ошибка сети: ' + err.message);
       }
@@ -243,13 +446,11 @@
       document.getElementById('active-chat-title').innerText = title;
       document.getElementById('active-chat-id').innerText = 'ID: ' + chatId;
 
-      // Мобильная адаптация
       if (window.innerWidth < 768) {
         document.getElementById('sidebar').style.display = 'none';
         document.getElementById('chat-area').style.display = 'flex';
       }
 
-      // Обновляем подсветку карточек
       document.querySelectorAll('#chat-list > div').forEach(el => {
         if (el.innerHTML.includes(chatId)) {
           el.className = 'p-3 rounded-xl cursor-pointer transition border bg-blue-600/30 border-blue-500';
@@ -258,7 +459,6 @@
         }
       });
 
-      // Загрузка сообщений
       const messagesBox = document.getElementById('messages');
       messagesBox.innerHTML = '<div class="text-xs text-slate-500 text-center my-auto">Загрузка переписки...</div>';
 
@@ -269,8 +469,7 @@
         messagesBox.innerHTML = '';
         if (res.ok) {
           const data = await res.json();
-          // ВАЖНО: парсим { "messages": [...] }
-          const msgs = data.messages || data || [];
+          const msgs = data.messages || [];
           if (Array.isArray(msgs) && msgs.length > 0) {
             msgs.forEach(appendMessage);
           } else {
@@ -309,7 +508,7 @@
 
       const div = document.createElement('div');
       div.className = `p-2.5 rounded-xl text-sm max-w-[80%] break-words ${
-        isMe ? 'bg-blue-600 text-white ml-auto rounded-br-none' : 'bg-slate-800 text-slate-200 mr-auto rounded-bl-none border border-slate-700'
+        isMe ? 'bg-blue-600 text-white ml-auto rounded-br-none shadow-md shadow-blue-600/20' : 'bg-slate-800 text-slate-200 mr-auto rounded-bl-none border border-slate-700'
       }`;
       div.innerText = msg.content;
       container.appendChild(div);
