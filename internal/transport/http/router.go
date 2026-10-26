@@ -28,6 +28,7 @@ func NewRouter(authHandler *AuthHandler, chatHandler *ChatHandler, wsHandler *ws
 				r.Post("/register", authHandler.Register)
 				r.Post("/login", authHandler.Login)
 			})
+			r.Get("/users/{id}/avatar", userHandler.GetAvatar)
 			// Защищённые маршруты
 			r.Group(func(r chi.Router) {
 				r.Use(AuthMiddleware(jwtSecret))
@@ -42,6 +43,7 @@ func NewRouter(authHandler *AuthHandler, chatHandler *ChatHandler, wsHandler *ws
 
 					r.Get("/{id}/messages", chatHandler.GetChatMessages)
 					r.Post("/{id}/messages", chatHandler.SendMessage)
+					r.Post("/{id}/read", chatHandler.MarkAsRead)
 				})
 			})
 		})

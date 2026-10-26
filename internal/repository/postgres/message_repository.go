@@ -34,14 +34,26 @@ func (r *MessageRepository) Create(ctx context.Context, msg *domain.Message) err
 
 func (r *MessageRepository) GetByChatID(ctx context.Context, chatID uuid.UUID, limit, offset int) ([]*domain.Message, error) {
 	query := `
-		SELECT id, chat_id, sender_id, content, created_at
-		FROM messages
-		WHERE chat_id = $1
-		ORDER BY created_at DESC
+		SELECT 
+			m.id, 
+			m.chat_id, 
+			m.sender_id, 
+			u.username, 
+			m.content, 
+			m.created_at,
+			EXISTS (
+				SELECT 1 
+				FROM chat_members cm 
+				WHERE cm.chat_id = m.chat_id 
+				  AND cm.user_id != m.sender_id 
+				  AND cm.last_read_at >= m.created_at
+			) AS is_read
+		FROM messages m
+		LEFT JOIN users u ON m.sender_id = u.id
+		WHERE m.chat_id = $1
+		ORDER BY m.created_at ASC
 		LIMIT $2 OFFSET $3
 	`
-
-	var msgs []*domain.Message
 
 	rows, err := r.pool.Query(ctx, query, chatID, limit, offset)
 	if err != nil {
@@ -49,14 +61,18 @@ func (r *MessageRepository) GetByChatID(ctx context.Context, chatID uuid.UUID, l
 	}
 	defer rows.Close()
 
+	var msgs []*domain.Message
+
 	for rows.Next() {
 		var msg domain.Message
 		err := rows.Scan(
 			&msg.ID,
 			&msg.ChatID,
 			&msg.SenderID,
+			&msg.SenderUsername,
 			&msg.Content,
 			&msg.CreatedAt,
+			&msg.IsRead,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan msg row: %w", err)

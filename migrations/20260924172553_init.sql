@@ -18,6 +18,7 @@ CREATE TABLE chats (
 CREATE TABLE chat_members(
     chat_id UUID REFERENCES chats(id) ON DELETE CASCADE,
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    last_read_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY(chat_id, user_id)
 );
@@ -29,6 +30,9 @@ CREATE TABLE messages (
     content VARCHAR(1000) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE INDEX idx_chat_members_user_id ON chat_members(user_id);
+CREATE INDEX idx_messages_chat_id_created_at ON messages(chat_id, created_at DESC);
 
 -- +goose Down
 DROP TABLE IF EXISTS messages CASCADE; 

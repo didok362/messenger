@@ -14,14 +14,35 @@ type ChatService struct {
 	chatRepo domain.ChatRepository
 	msgRepo  domain.MessageRepository
 	userRepo domain.UserRepository
+	presence PresenceChecker
 }
 
-func NewChatService(chatRepo domain.ChatRepository, msgRepo domain.MessageRepository, userRepo domain.UserRepository) *ChatService {
+type PresenceChecker interface {
+	IsUserOnline(userID uuid.UUID) bool
+}
+
+func NewChatService(chatRepo domain.ChatRepository, msgRepo domain.MessageRepository, userRepo domain.UserRepository, presence PresenceChecker) *ChatService {
 	return &ChatService{
 		chatRepo: chatRepo,
 		msgRepo:  msgRepo,
 		userRepo: userRepo,
+		presence: presence,
 	}
+}
+
+func (s *ChatService) GetUserChats(ctx context.Context, userID uuid.UUID) ([]*domain.ChatPreview, error) {
+	chats, err := s.chatRepo.GetUserChats(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to get chats: %w", err)
+	}
+	if s.presence != nil {
+		for _, chat := range chats {
+			if chat.Type == "direct" && chat.DirectUserID != nil {
+				chat.IsOnline = s.presence.IsUserOnline(*chat.DirectUserID)
+			}
+		}
+	}
+	return chats, nil
 }
 
 func (s *ChatService) CreateDirectChat(ctx context.Context, user1ID, user2ID uuid.UUID) (*domain.Chat, error) {
@@ -47,18 +68,6 @@ func (s *ChatService) CreateDirectChat(ctx context.Context, user1ID, user2ID uui
 	return chat, nil
 }
 
-func (s *ChatService) CreateDirectChatByUsername(ctx context.Context, currentUserID uuid.UUID, targetUsername string) (*domain.Chat, error) {
-
-	targetUser, err := s.userRepo.GetByUsername(ctx, targetUsername)
-
-	if err != nil {
-		return nil, fmt.Errorf("faield to get user id: %w", err)
-	}
-
-	return s.CreateDirectChat(ctx, currentUserID, targetUser.ID)
-
-}
-
 func (s *ChatService) SendMessage(ctx context.Context, content string, chatID uuid.UUID, senderID uuid.UUID) (*domain.Message, error) {
 	if strings.TrimSpace(content) == "" {
 		return nil, errors.New("cannot send empty msg")
@@ -71,15 +80,21 @@ func (s *ChatService) SendMessage(ctx context.Context, content string, chatID uu
 		return nil, errors.New("You are not a member")
 	}
 
+	user, err := s.userRepo.GetByID(ctx, senderID)
+	if err != nil {
+		return nil, errors.New("Failed to fecth user")
+	}
+
 	msg := domain.Message{
-		ChatID:   chatID,
-		SenderID: &senderID,
-		Content:  content,
+		ChatID:         chatID,
+		SenderID:       &senderID,
+		Content:        content,
+		SenderUsername: user.Username,
 	}
 
 	err = s.msgRepo.Create(ctx, &msg)
 	if err != nil {
-		return nil, errors.New("failed to create user")
+		return nil, errors.New("failed to create message")
 	}
 	return &msg, nil
 }
@@ -114,22 +129,6 @@ func (s *ChatService) CreateGroupChat(ctx context.Context, title string, creator
 	return chat, nil
 }
 
-func (s *ChatService) CreateGroupChatByUsernames(ctx context.Context, title string, creatorID uuid.UUID, usernames []string) (*domain.Chat, error) {
-	memberIDs := make([]uuid.UUID, len(usernames))
-	for i, val := range usernames {
-		user, err := s.userRepo.GetByUsername(ctx, val)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get user: %w", err)
-		}
-		memberIDs[i] = user.ID
-	}
-	return s.CreateGroupChat(ctx, title, creatorID, memberIDs)
-}
-
-func (s *ChatService) GetUserChats(ctx context.Context, userID uuid.UUID) ([]*domain.Chat, error) {
-	return s.chatRepo.GetUserChats(ctx, userID)
-}
-
 func (s *ChatService) GetChatMessages(ctx context.Context, chatID, userID uuid.UUID, limit, offset int) ([]*domain.Message, error) {
 	isMember, err := s.chatRepo.IsMember(ctx, chatID, userID)
 	if err != nil {
@@ -145,4 +144,15 @@ func (s *ChatService) GetChatMessages(ctx context.Context, chatID, userID uuid.U
 		offset = 0
 	}
 	return s.msgRepo.GetByChatID(ctx, chatID, limit, offset)
+}
+
+func (s *ChatService) MarkChatAsRead(ctx context.Context, chatID, userID uuid.UUID) error {
+	isMember, err := s.chatRepo.IsMember(ctx, chatID, userID)
+	if err != nil {
+		return fmt.Errorf("failed to check membership: %w", err)
+	}
+	if !isMember {
+		return domain.ErrForbidden
+	}
+	return s.chatRepo.MarkAsRead(ctx, chatID, userID)
 }

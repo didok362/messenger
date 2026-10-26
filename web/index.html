@@ -69,7 +69,10 @@
       <!-- Профиль текущего пользователя -->
       <div class="p-3.5 border-b border-slate-800 flex justify-between items-center bg-slate-900/90">
         <div class="flex items-center gap-2.5">
-          <div class="w-9 h-9 rounded-full bg-blue-600/20 border border-blue-500/30 flex items-center justify-center font-bold text-sm text-blue-400" id="avatar-badge">U</div>
+          <div class="relative flex-shrink-0">
+            <img id="avatar-badge" class="w-10 h-10 rounded-full object-cover bg-slate-800 border border-slate-700 shadow-sm" alt="My Avatar">
+            <span class="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-slate-900 bg-emerald-500"></span>
+          </div>
           <div>
             <div class="text-xs font-bold leading-tight" id="user-badge">user</div>
             <div class="text-[10px] text-emerald-400 font-medium leading-none flex items-center gap-1 mt-0.5">
@@ -116,11 +119,9 @@
       <div class="p-3 bg-slate-900/80 border-b border-slate-800 flex items-center justify-between">
         <div class="flex items-center gap-3">
           <button onclick="showSidebarOnMobile()" class="md:hidden text-xs text-blue-400 hover:underline">← Чаты</button>
-          <div>
-            <div class="text-sm font-semibold flex items-center gap-2" id="active-chat-title">
-              <span>Выберите диалог</span>
-            </div>
-            <div class="text-[10px] text-slate-500 font-mono" id="active-chat-id">ID: -</div>
+          <div class="flex flex-col justify-center">
+            <div id="active-chat-title" class="text-sm font-semibold text-slate-100 leading-tight">Выберите диалог</div>
+            <div id="active-chat-status" class="text-[11px] font-normal text-slate-400 mt-0.5 hidden"></div>
           </div>
         </div>
       </div>
@@ -143,7 +144,23 @@
     let token = localStorage.getItem('token');
     let currentUser = localStorage.getItem('username') || '';
     let currentChatId = null;
+    let currentPartnerId = null;
     let ws = null;
+
+    function updateHeaderStatus(isOnline) {
+      const statusEl = document.getElementById('active-chat-status');
+      if (!currentPartnerId) {
+        statusEl.className = 'text-[11px] font-normal hidden';
+        statusEl.innerHTML = '';
+        return;
+      }
+      statusEl.className = 'text-[11px] font-normal flex items-center gap-1.5 mt-0.5';
+      if (isOnline) {
+        statusEl.innerHTML = '<span class="inline-block w-2 h-2 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/50"></span><span class="text-emerald-400 font-medium leading-none">в сети</span>';
+      } else {
+        statusEl.innerHTML = '<span class="inline-block w-2 h-2 rounded-full bg-slate-500"></span><span class="text-slate-400 leading-none">не в сети</span>';
+      }
+    }
 
     function getMyId() {
       if (!token) return null;
@@ -282,8 +299,11 @@
     function showApp() {
       document.getElementById('auth-screen').style.display = 'none';
       document.getElementById('main-screen').style.display = 'flex';
-      document.getElementById('user-badge').innerText = '@' + (currentUser || 'user');
-      document.getElementById('avatar-badge').innerText = (currentUser || 'U')[0].toUpperCase();
+      document.getElementById('user-badge').innerText = currentUser || 'user';
+      const myId = getMyId();
+      if (myId) {
+        document.getElementById('avatar-badge').src = `/api/v1/users/${myId}/avatar`;
+      }
       connectWS();
       loadChats(true);
     }
@@ -320,25 +340,57 @@
           const item = document.createElement('div');
           const isSelected = chat.id === currentChatId;
           const isGroup = chat.type === 'group';
-          const title = isGroup ? `👥 ${chat.title || 'Группа'}` : `💬 @${chat.title || 'Собеседник'}`;
+          const title = isGroup ? `👥 ${chat.title || 'Группа'}` : `${chat.title || 'Собеседник'}`;
 
-          item.className = `p-3 rounded-xl cursor-pointer transition border ${
-            isSelected ? 'bg-blue-600/30 border-blue-500' : 'bg-slate-900 hover:bg-slate-800 border-slate-800'
+          const avatarUrl = isGroup
+            ? `https://api.dicebear.com/7.x/identicon/svg?seed=${chat.id}`
+            : `/api/v1/users/${chat.direct_user_id || chat.id}/avatar`;
+
+          let previewText = 'Пока нет сообщений';
+          let previewTime = '';
+          if (chat.last_message) {
+            // Автора пишем только в группах. В личных диалогах пишем чистый текст:
+            const sender = (isGroup && chat.last_message.sender_username) ? `${chat.last_message.sender_username}: ` : '';
+            previewText = `${sender}${chat.last_message.content}`;
+            if (chat.last_message.created_at) {
+              previewTime = new Date(chat.last_message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            }
+          }
+
+          const unreadBadge = (chat.unread_count > 0 && !isSelected) 
+            ? `<span class="bg-blue-500 text-white font-bold text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0">${chat.unread_count}</span>` 
+            : '';
+
+          item.setAttribute('data-chat-id', chat.id);
+          if (chat.direct_user_id) {
+            item.setAttribute('data-partner-id', chat.direct_user_id);
+          }
+          item.className = `p-2 rounded-xl cursor-pointer transition border flex items-center gap-3 ${
+            isSelected ? 'bg-blue-600/30 border-blue-500 shadow-sm' : 'bg-slate-900 hover:bg-slate-800 border-slate-800'
           }`;
           item.innerHTML = `
-            <div class="flex items-center justify-between">
-              <span class="font-bold text-xs text-slate-200 truncate">${title}</span>
-              <span class="text-[9px] px-1.5 py-0.5 rounded ${isGroup ? 'bg-purple-900/50 text-purple-300' : 'bg-blue-900/50 text-blue-300'} font-mono">${chat.type}</span>
+            <div class="relative flex-shrink-0">
+              <img src="${avatarUrl}" class="w-12 h-12 rounded-full object-cover bg-slate-800 border border-slate-700 shadow-sm" alt="Avatar">
+              ${!isGroup ? `<span class="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-slate-900 ${chat.is_online ? 'bg-emerald-500' : 'bg-slate-600'}"></span>` : ''}
             </div>
-            <div class="text-[10px] text-slate-500 font-mono truncate mt-1">ID: ${chat.id}</div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center justify-between gap-2">
+                <span class="font-bold text-sm text-slate-200 truncate">${title}</span>
+                <span class="text-[10px] text-slate-400 font-mono flex-shrink-0">${previewTime}</span>
+              </div>
+              <div class="flex items-center justify-between gap-2 mt-0.5">
+                <div class="text-xs text-slate-400 truncate">${previewText}</div>
+                ${unreadBadge}
+              </div>
+            </div>
           `;
-          item.onclick = () => selectChat(chat.id, title);
+          item.onclick = () => selectChat(chat.id, title, chat.direct_user_id, chat.is_online);
           list.appendChild(item);
         });
 
         if (autoSelectFirst && !currentChatId && chats.length > 0) {
           const first = chats[0];
-          selectChat(first.id, first.type === 'group' ? `👥 ${first.title || 'Группа'}` : `💬 @${first.title || 'Собеседник'}`);
+          selectChat(first.id, first.type === 'group' ? `👥 ${first.title || 'Группа'}` : `${first.title || 'Собеседник'}`, first.direct_user_id, first.is_online);
         }
       } catch (err) {
         console.error('Ошибка загрузки чатов:', err);
@@ -381,7 +433,7 @@
         const data = await res.json();
         input.value = '';
         await loadChats(false);
-        selectChat(data.chat.id, `💬 @${targetUsername}`);
+        selectChat(data.chat.id, targetUsername, targetUserId);
       } catch (err) {
         alert('Ошибка сети: ' + err.message);
       }
@@ -441,23 +493,31 @@
     }
 
     // Выбор чата
-    async function selectChat(chatId, title = 'Диалог') {
+    async function selectChat(chatId, title = 'Диалог', partnerId = null, isOnline = false) {
       currentChatId = chatId;
+      currentPartnerId = partnerId;
       document.getElementById('active-chat-title').innerText = title;
-      document.getElementById('active-chat-id').innerText = 'ID: ' + chatId;
+      updateHeaderStatus(isOnline);
+
+      // Мгновенная подсветка активного чата в сайдбаре
+      document.querySelectorAll('#chat-list > div').forEach(el => {
+        const isCurrent = el.getAttribute('data-chat-id') === chatId;
+        el.className = `p-2 rounded-xl cursor-pointer transition border flex items-center gap-3 ${
+          isCurrent ? 'bg-blue-600/30 border-blue-500 shadow-sm' : 'bg-slate-900 hover:bg-slate-800 border-slate-800'
+        }`;
+      });
+
+      // Отправляем сигнал прочтения и обновляем сайдбар
+      await fetch(`/api/v1/chats/${chatId}/read`, {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      await loadChats(false);
 
       if (window.innerWidth < 768) {
         document.getElementById('sidebar').style.display = 'none';
         document.getElementById('chat-area').style.display = 'flex';
       }
-
-      document.querySelectorAll('#chat-list > div').forEach(el => {
-        if (el.innerHTML.includes(chatId)) {
-          el.className = 'p-3 rounded-xl cursor-pointer transition border bg-blue-600/30 border-blue-500';
-        } else {
-          el.className = 'p-3 rounded-xl cursor-pointer transition border bg-slate-900 hover:bg-slate-800 border-slate-800';
-        }
-      });
 
       const messagesBox = document.getElementById('messages');
       messagesBox.innerHTML = '<div class="text-xs text-slate-500 text-center my-auto">Загрузка переписки...</div>';
@@ -486,12 +546,42 @@
       const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       ws = new WebSocket(`${proto}//${window.location.host}/api/v1/ws?token=${token}`);
 
-      ws.onmessage = (event) => {
-        const msg = JSON.parse(event.data);
+      ws.onmessage = async (event) => {
+        const data = JSON.parse(event.data);
+
+        // 1. Событие: статус пользователя (Online / Offline)
+        if (data.type === 'user_status') {
+          if (currentPartnerId === data.user_id) {
+            updateHeaderStatus(data.is_online);
+          }
+          await loadChats(false);
+          return;
+        }
+
+        // 2. Событие: кто-то прочитал сообщения в чате
+        if (data.type === 'messages_read') {
+          if (data.chat_id === currentChatId) {
+            document.querySelectorAll('#messages .msg-status').forEach(el => {
+              el.innerText = '✓✓';
+              el.className = 'msg-status font-mono ml-0.5 text-cyan-300 font-bold';
+              el.title = 'Прочитано';
+            });
+          }
+          return;
+        }
+
+        // 2. Входящее сообщение
+        const msg = data;
         if (msg.chat_id === currentChatId) {
           appendMessage(msg);
+          if (msg.sender_id !== getMyId()) {
+            await fetch(`/api/v1/chats/${msg.chat_id}/read`, {
+              method: 'POST',
+              headers: { 'Authorization': 'Bearer ' + token }
+            });
+          }
         }
-        loadChats(false);
+        await loadChats(false);
       };
       ws.onclose = () => setTimeout(connectWS, 2000);
     }
@@ -505,13 +595,71 @@
 
       const myId = getMyId();
       const isMe = msg.sender_id === myId;
+      const timeStr = msg.created_at ? new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+      const avatarUrl = msg.sender_id ? `/api/v1/users/${msg.sender_id}/avatar` : `https://api.dicebear.com/7.x/identicon/svg?seed=${msg.sender_username || 'user'}`;
 
-      const div = document.createElement('div');
-      div.className = `p-2.5 rounded-xl text-sm max-w-[80%] break-words ${
-        isMe ? 'bg-blue-600 text-white ml-auto rounded-br-none shadow-md shadow-blue-600/20' : 'bg-slate-800 text-slate-200 mr-auto rounded-bl-none border border-slate-700'
+      // Общий контейнер сообщения со сдвигом влево/вправо
+      const row = document.createElement('div');
+      row.className = `flex items-end gap-2 max-w-[85%] ${isMe ? 'ml-auto justify-end' : 'mr-auto justify-start'}`;
+
+      // Аватарка отправителя
+      const avatar = document.createElement('img');
+      avatar.src = avatarUrl;
+      avatar.className = `w-8 h-8 rounded-full object-cover flex-shrink-0 mb-0.5 bg-slate-800 border ${
+        isMe ? 'border-blue-500/40' : 'border-slate-700'
+      } shadow-sm`;
+      avatar.alt = 'Avatar';
+
+      // Облачко сообщения (relative для точного позиционирования времени внизу)
+      const bubble = document.createElement('div');
+      bubble.className = `relative rounded-2xl px-3 py-1.5 shadow-sm break-words max-w-full ${
+        isMe 
+          ? 'bg-blue-600 text-white rounded-br-none shadow-blue-600/20' 
+          : 'bg-slate-800 text-slate-100 rounded-bl-none border border-slate-700'
       }`;
-      div.innerText = msg.content;
-      container.appendChild(div);
+
+      // Текст сообщения
+      const textSpan = document.createElement('span');
+      textSpan.className = 'text-sm leading-relaxed whitespace-pre-wrap';
+      textSpan.innerText = msg.content;
+      bubble.appendChild(textSpan);
+
+      // Распорка-невидимка (spacer), чтобы длинный текст не накладывался на время в правом нижнем углу
+      const spacer = document.createElement('span');
+      spacer.className = `inline-block ${isMe ? 'w-14' : 'w-10'} h-3 pointer-events-none`;
+      bubble.appendChild(spacer);
+
+      // Время и статус (галочки) - строго в правом нижнем углу облачка
+      const metaSpan = document.createElement('span');
+      metaSpan.className = `absolute bottom-1 right-2.5 inline-flex items-center gap-1 text-[10px] select-none font-mono leading-none ${
+        isMe ? 'text-blue-200' : 'text-slate-400'
+      }`;
+
+      if (timeStr) {
+        const timeSpan = document.createElement('span');
+        timeSpan.innerText = timeStr;
+        metaSpan.appendChild(timeSpan);
+      }
+
+      if (isMe) {
+        const statusSpan = document.createElement('span');
+        statusSpan.className = 'msg-status font-bold ' + (msg.is_read ? 'text-cyan-300' : 'text-blue-300/70');
+        statusSpan.innerText = msg.is_read ? '✓✓' : '✓';
+        statusSpan.title = msg.is_read ? 'Прочитано' : 'Отправлено';
+        metaSpan.appendChild(statusSpan);
+      }
+
+      bubble.appendChild(metaSpan);
+
+      if (isMe) {
+        row.appendChild(bubble);
+        row.appendChild(avatar);
+      } else {
+        row.appendChild(avatar);
+        row.appendChild(bubble);
+      }
+
+      container.appendChild(row);
       container.scrollTop = container.scrollHeight;
     }
 

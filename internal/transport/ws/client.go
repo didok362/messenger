@@ -3,7 +3,6 @@ package ws
 import (
 	"context"
 
-	"github.com/didok362/messenger/internal/domain"
 	"github.com/didok362/messenger/internal/service"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -12,7 +11,7 @@ import (
 type Client struct {
 	hub         *Hub
 	conn        *websocket.Conn
-	send        chan *domain.Message
+	send        chan any
 	userID      uuid.UUID
 	chatService *service.ChatService
 }

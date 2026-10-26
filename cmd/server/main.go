@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/didok362/messenger/internal/avatar"
 	"github.com/didok362/messenger/internal/repository/postgres"
 	"github.com/didok362/messenger/internal/service"
 	transporthttp "github.com/didok362/messenger/internal/transport/http"
@@ -27,19 +28,20 @@ func main() {
 	jwtSecret := "super-secret-jwt-key"
 
 	// 2. Инициализация репозиториев и сервисов
-	hub := ws.NewHub()
-	go hub.Run()
-
 	userRepo := postgres.NewUserRepository(pool)
-	authService := service.NewAuthService(userRepo, jwtSecret, 24*time.Hour)
-	authHandler := transporthttp.NewAuthHandler(authService)
-
 	chatRepo := postgres.NewChatRepository(pool)
 	msgRepo := postgres.NewMessageRepository(pool)
-	chatService := service.NewChatService(chatRepo, msgRepo, userRepo)
-	chatHandler := transporthttp.NewChatHandler(chatService)
-	userHandler := transporthttp.NewUserHandler(userRepo)
-
+	hub := ws.NewHub(chatRepo)
+	go hub.Run()
+	authService := service.NewAuthService(userRepo, jwtSecret, 24*time.Hour)
+	authHandler := transporthttp.NewAuthHandler(authService)
+	chatService := service.NewChatService(chatRepo, msgRepo, userRepo, hub)
+	chatHandler := transporthttp.NewChatHandler(chatService, hub)
+	avatarGen, err := avatar.NewGenerator("assets/avatars")
+	if err != nil {
+		log.Fatalf("Failed to connect to find assets: %v", err)
+	}
+	userHandler := transporthttp.NewUserHandler(userRepo, avatarGen)
 	wsHandler := ws.NewHandler(hub, chatService, []byte(jwtSecret))
 
 	// 3. Роутер со всеми хендлерами и секретом

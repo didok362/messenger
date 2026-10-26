@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/didok362/messenger/internal/domain"
 	"github.com/didok362/messenger/internal/service"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
@@ -70,7 +69,7 @@ func (h *Handler) ServeWS(w http.ResponseWriter, r *http.Request) {
 	client := &Client{
 		hub:         h.hub,
 		conn:        conn,
-		send:        make(chan *domain.Message, 256),
+		send:        make(chan any, 256),
 		userID:      userID,
 		chatService: h.chatService,
 	}

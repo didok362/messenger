@@ -14,6 +14,7 @@ type Message struct {
 	SenderUsername string     `json:"sender_username,omitempty"`
 	Content        string     `json:"content"`
 	CreatedAt      time.Time  `json:"created_at"`
+	IsRead         bool       `json:"is_read"`
 }
 
 type MessageRepository interface {
