@@ -5,9 +5,14 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"strings"
+	"syscall"
 	"time"
 
 	"github.com/didok362/messenger/internal/avatar"
+	"github.com/didok362/messenger/internal/config"
 	"github.com/didok362/messenger/internal/repository/postgres"
 	"github.com/didok362/messenger/internal/service"
 	transporthttp "github.com/didok362/messenger/internal/transport/http"
@@ -15,17 +20,17 @@ import (
 )
 
 func main() {
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	cfg := config.Load()
 
 	// 1. Подключение к БД
-	connStr := "postgres://didok362:qwerty67@localhost:5432/messenger_db?sslmode=disable"
-	pool, err := postgres.New(ctx, connStr)
+	pool, err := postgres.New(ctx, cfg.DB.ConnectionString())
 	if err != nil {
 		log.Fatalf("Failed to connect to DB: %v", err)
 	}
 	defer pool.Close()
-
-	jwtSecret := "super-secret-jwt-key"
 
 	// 2. Инициализация репозиториев и сервисов
 	userRepo := postgres.NewUserRepository(pool)
@@ -33,24 +38,43 @@ func main() {
 	msgRepo := postgres.NewMessageRepository(pool)
 	hub := ws.NewHub(chatRepo)
 	go hub.Run()
-	authService := service.NewAuthService(userRepo, jwtSecret, 24*time.Hour)
+	authService := service.NewAuthService(userRepo, cfg.JWTSecret, cfg.JWTTTL)
 	authHandler := transporthttp.NewAuthHandler(authService)
 	chatService := service.NewChatService(chatRepo, msgRepo, userRepo, hub)
 	chatHandler := transporthttp.NewChatHandler(chatService, hub)
-	avatarGen, err := avatar.NewGenerator("assets/avatars")
+	avatarGen, err := avatar.NewGenerator(cfg.AssetsDir)
+
 	if err != nil {
 		log.Fatalf("Failed to connect to find assets: %v", err)
 	}
 	userHandler := transporthttp.NewUserHandler(userRepo, avatarGen)
-	wsHandler := ws.NewHandler(hub, chatService, []byte(jwtSecret))
+	wsHandler := ws.NewHandler(hub, chatService, []byte(cfg.JWTSecret))
 
 	// 3. Роутер со всеми хендлерами и секретом
-	router := transporthttp.NewRouter(authHandler, chatHandler, wsHandler, userHandler, []byte(jwtSecret))
+	router := transporthttp.NewRouter(authHandler, chatHandler, wsHandler, userHandler, []byte(cfg.JWTSecret))
 
-	// 4. Старт HTTP сервера
-	port := ":8080"
-	fmt.Printf("🚀 Сервер запущен на http://localhost%s\n", port)
-	if err := http.ListenAndServe(port, router); err != nil {
-		log.Fatalf("Server failed: %v", err)
+	server := &http.Server{
+		Addr:    ":" + strings.TrimPrefix(cfg.HTTPPort, ":"),
+		Handler: router,
 	}
+
+	go func() {
+		fmt.Printf("🚀 Сервер запущен на http://localhost%s\n", server.Addr)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Ошибка сервера: %v", err)
+		}
+	}()
+
+	<-ctx.Done()
+	fmt.Println("\n🛑 Получен сигнал остановки, мягко выключаем сервер...")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		log.Printf("Ошибка при остановке сервера: %v", err)
+	}
+
+	fmt.Println("👋 Сервер успешно остановлен")
+
 }

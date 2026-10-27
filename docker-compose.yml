@@ -1,14 +1,61 @@
 services:
   postgres:
     image: postgres:18-alpine
+    container_name: messenger-postgres
     environment:
-      - POSTGRES_USER=didok362
-      - POSTGRES_PASSWORD=qwerty67
-      - POSTGRES_DB=messenger_db
+      POSTGRES_USER: ${POSTGRES_USER:-didok362}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-qwerty67}
+      POSTGRES_DB: ${POSTGRES_DB:-messenger_db}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql
-      
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-didok362} -d ${POSTGRES_DB:-messenger_db}"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  messenger:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: messenger-app
+    environment:
+      HTTP_PORT: ${HTTP_PORT:-8080}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-didok362}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-qwerty67}
+      POSTGRES_DB: ${POSTGRES_DB:-messenger_db}
+      POSTGRES_SSLMODE: ${POSTGRES_SSLMODE:-disable}
+      JWT_SECRET: ${JWT_SECRET:-super-secret-jwt-key}
+      JWT_TTL: ${JWT_TTL:-24h}
+      ASSETS_DIR: assets/avatars
+      WEB_DIR: web
+    ports:
+      - "${HTTP_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  migrate:
+    image: gomicro/goose:latest
+    container_name: messenger-migrate
+    volumes:
+      - ./migrations:/migrations
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint:
+      - goose
+      - -dir
+      - /migrations
+      - postgres
+      - "postgres://${POSTGRES_USER:-didok362}:${POSTGRES_PASSWORD:-qwerty67}@postgres:5432/${POSTGRES_DB:-messenger_db}?sslmode=disable"
+      - up
+
 volumes:
   pgdata:

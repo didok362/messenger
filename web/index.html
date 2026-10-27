@@ -73,12 +73,7 @@
             <img id="avatar-badge" class="w-10 h-10 rounded-full object-cover bg-slate-800 border border-slate-700 shadow-sm" alt="My Avatar">
             <span class="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-slate-900 bg-emerald-500"></span>
           </div>
-          <div>
-            <div class="text-xs font-bold leading-tight" id="user-badge">user</div>
-            <div class="text-[10px] text-emerald-400 font-medium leading-none flex items-center gap-1 mt-0.5">
-              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> онлайн
-            </div>
-          </div>
+          <div class="text-sm font-bold leading-tight text-slate-100" id="user-badge">user</div>
         </div>
         <button onclick="logout()" class="text-xs text-slate-400 hover:text-red-400 px-2 py-1 rounded-lg hover:bg-slate-800 transition">Выйти</button>
       </div>
@@ -127,7 +122,7 @@
       </div>
 
       <!-- Лента сообщений -->
-      <div id="messages" class="flex-1 overflow-y-auto p-4 flex flex-col gap-2.5">
+      <div id="messages" class="flex-1 overflow-y-auto p-4 flex flex-col gap-2.5 select-text">
         <div class="text-xs text-slate-500 text-center my-auto">Выберите чат в меню слева!</div>
       </div>
 
@@ -145,6 +140,7 @@
     let currentUser = localStorage.getItem('username') || '';
     let currentChatId = null;
     let currentPartnerId = null;
+    let currentChatType = 'direct';
     let ws = null;
 
     function updateHeaderStatus(isOnline) {
@@ -384,13 +380,13 @@
               </div>
             </div>
           `;
-          item.onclick = () => selectChat(chat.id, title, chat.direct_user_id, chat.is_online);
+          item.onclick = () => selectChat(chat.id, title, chat.direct_user_id, chat.is_online, chat.type);
           list.appendChild(item);
         });
 
         if (autoSelectFirst && !currentChatId && chats.length > 0) {
           const first = chats[0];
-          selectChat(first.id, first.type === 'group' ? `👥 ${first.title || 'Группа'}` : `${first.title || 'Собеседник'}`, first.direct_user_id, first.is_online);
+          selectChat(first.id, first.type === 'group' ? `👥 ${first.title || 'Группа'}` : `${first.title || 'Собеседник'}`, first.direct_user_id, first.is_online, first.type);
         }
       } catch (err) {
         console.error('Ошибка загрузки чатов:', err);
@@ -433,7 +429,7 @@
         const data = await res.json();
         input.value = '';
         await loadChats(false);
-        selectChat(data.chat.id, targetUsername, targetUserId);
+        selectChat(data.chat.id, targetUsername, targetUserId, false, 'direct');
       } catch (err) {
         alert('Ошибка сети: ' + err.message);
       }
@@ -486,16 +482,17 @@
         titleInput.value = '';
         membersInput.value = '';
         await loadChats(false);
-        selectChat(data.chat.id, `👥 ${title}`);
+        selectChat(data.chat.id, `👥 ${title}`, null, false, 'group');
       } catch (err) {
         alert('Ошибка сети: ' + err.message);
       }
     }
 
     // Выбор чата
-    async function selectChat(chatId, title = 'Диалог', partnerId = null, isOnline = false) {
+    async function selectChat(chatId, title = 'Диалог', partnerId = null, isOnline = false, chatType = 'direct') {
       currentChatId = chatId;
       currentPartnerId = partnerId;
+      currentChatType = chatType;
       document.getElementById('active-chat-title').innerText = title;
       updateHeaderStatus(isOnline);
 
@@ -587,6 +584,147 @@
     }
 
     // Отрисовка сообщения
+    // Безопасный парсинг ссылок и текста без риска XSS
+    function renderFormattedText(container, content, isMe) {
+      if (!content) return [];
+      const foundUrls = [];
+      const urlRegex = /(https?:\/\/[^\s]+)/g;
+      const parts = content.split(urlRegex);
+      parts.forEach(part => {
+        if (part.match(/^https?:\/\//)) {
+          let url = part;
+          let trailingPunct = '';
+          const punctMatch = url.match(/([.,!?:;)]+)$/);
+          if (punctMatch) {
+            trailingPunct = punctMatch[1];
+            url = url.slice(0, -trailingPunct.length);
+          }
+
+          const a = document.createElement('a');
+          a.href = url;
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+          a.className = isMe 
+            ? 'underline font-medium text-cyan-200 hover:text-white break-all select-text cursor-pointer' 
+            : 'underline font-medium text-blue-400 hover:text-blue-300 break-all select-text cursor-pointer';
+          a.innerText = url;
+          a.onclick = (e) => e.stopPropagation();
+          container.appendChild(a);
+
+          foundUrls.push(url);
+
+          if (trailingPunct) {
+            container.appendChild(document.createTextNode(trailingPunct));
+          }
+        } else if (part) {
+          container.appendChild(document.createTextNode(part));
+        }
+      });
+      return foundUrls;
+    }
+
+    // Встраивание превью для картинок и медиа (eblo.id, imgur, youtube, прямые картинки)
+    function attachMediaPreviews(bubble, metaSpan, urls) {
+      urls.forEach(url => {
+        try {
+          const u = new URL(url);
+          const host = u.hostname.toLowerCase();
+          const pathname = u.pathname;
+
+          let previewUrl = null;
+          let isImgurPost = false;
+          let imgurId = null;
+
+          // 1. YouTube
+          if (host === 'youtu.be') {
+            const id = pathname.slice(1).split('/')[0].split('?')[0];
+            if (id) previewUrl = `https://img.youtube.com/vi/${id}/hqdefault.jpg`;
+          } else if (host.includes('youtube.com')) {
+            const id = u.searchParams.get('v');
+            if (id) previewUrl = `https://img.youtube.com/vi/${id}/hqdefault.jpg`;
+          }
+
+          // 2. eblo.id (посты вида eblo.id/TR55khS или прямые uploads)
+          else if (host.includes('eblo.id')) {
+            if (pathname.includes('/uploads/')) {
+              previewUrl = url;
+            } else {
+              const code = pathname.replace(/^\//, '').split('/')[0];
+              if (code && /^[a-zA-Z0-9_-]+$/.test(code)) {
+                previewUrl = `https://eblo.id/uploads/thumbs/${code}_thumb.webp`;
+              }
+            }
+          }
+
+          // 3. Imgur (прямые i.imgur.com или посты/галереи imgur.com/gallery/...)
+          else if (host.includes('imgur.com')) {
+            if (host === 'i.imgur.com' && /\.(jpe?g|png|gif|webp)$/i.test(pathname)) {
+              previewUrl = url;
+            } else {
+              const segments = pathname.split('/').filter(Boolean);
+              if (segments.length > 0) {
+                const last = segments[segments.length - 1];
+                const parts = last.split('-');
+                const id = parts[parts.length - 1];
+                if (/^[a-zA-Z0-9]+$/.test(id)) {
+                  imgurId = id;
+                  isImgurPost = true;
+                }
+              }
+            }
+          }
+
+          // 4. Прямые ссылки на изображения по расширению
+          else if (/\.(png|jpe?g|gif|webp|svg)($|\?)/i.test(pathname)) {
+            previewUrl = url;
+          }
+
+          if (!previewUrl && !isImgurPost) return;
+
+          const img = document.createElement('img');
+          img.referrerPolicy = 'no-referrer';
+          img.className = 'mt-2 rounded-xl max-h-64 max-w-full object-contain block bg-slate-900/60 border border-slate-700/60 cursor-pointer hover:opacity-95 transition shadow-sm';
+          img.alt = 'Preview';
+          img.title = 'Нажмите, чтобы открыть оригинал';
+          img.onclick = (e) => {
+            e.stopPropagation();
+            window.open(url, '_blank');
+          };
+
+          img.onload = () => {
+            metaSpan.className = 'absolute bottom-1.5 right-2.5 inline-flex items-center gap-1 text-[10px] select-none font-mono leading-none bg-black/60 backdrop-blur-sm px-2 py-0.5 rounded-full text-white shadow-sm';
+            const box = document.getElementById('messages');
+            if (box) box.scrollTop = box.scrollHeight;
+          };
+
+          img.onerror = () => {
+            img.remove();
+          };
+
+          if (isImgurPost && imgurId) {
+            // Для постов и галерей Imgur запрашиваем cover_id через публичный API Imgur (CORS разрешен)
+            fetch(`https://api.imgur.com/post/v1/posts/${imgurId}?client_id=546c25a59c58ad7`)
+              .then(res => res.json())
+              .then(data => {
+                const cover = data.cover_id || data.id;
+                if (cover) {
+                  img.src = `https://i.imgur.com/${cover}.jpg`;
+                } else {
+                  img.remove();
+                }
+              })
+              .catch(() => {
+                img.src = `https://i.imgur.com/${imgurId}.jpg`;
+              });
+          } else if (previewUrl) {
+            img.src = previewUrl;
+          }
+
+          bubble.appendChild(img);
+        } catch (e) {}
+      });
+    }
+
     function appendMessage(msg) {
       const container = document.getElementById('messages');
       if (container.children.length === 1 && container.children[0].innerText.includes('Сообщений пока нет')) {
@@ -612,16 +750,31 @@
 
       // Облачко сообщения (relative для точного позиционирования времени внизу)
       const bubble = document.createElement('div');
-      bubble.className = `relative rounded-2xl px-3 py-1.5 shadow-sm break-words max-w-full ${
+      bubble.className = `relative rounded-2xl px-3 py-1.5 shadow-sm break-words max-w-full select-text ${
         isMe 
           ? 'bg-blue-600 text-white rounded-br-none shadow-blue-600/20' 
           : 'bg-slate-800 text-slate-100 rounded-bl-none border border-slate-700'
       }`;
 
-      // Текст сообщения
+      // В групповых чатах отображаем ник отправителя вверху бабла (для собеседников)
+      if (currentChatType === 'group' && !isMe && msg.sender_username) {
+        const colors = ['text-sky-400', 'text-emerald-400', 'text-amber-400', 'text-purple-400', 'text-pink-400', 'text-cyan-400', 'text-rose-400'];
+        let hash = 0;
+        for (let i = 0; i < msg.sender_username.length; i++) {
+          hash = msg.sender_username.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        const color = colors[Math.abs(hash) % colors.length];
+
+        const authorDiv = document.createElement('div');
+        authorDiv.className = `text-[11px] font-bold ${color} mb-0.5 leading-tight select-none`;
+        authorDiv.innerText = msg.sender_username;
+        bubble.appendChild(authorDiv);
+      }
+
+      // Текст сообщения с кликабельными ссылками
       const textSpan = document.createElement('span');
-      textSpan.className = 'text-sm leading-relaxed whitespace-pre-wrap';
-      textSpan.innerText = msg.content;
+      textSpan.className = 'text-sm leading-relaxed whitespace-pre-wrap select-text';
+      const urls = renderFormattedText(textSpan, msg.content, isMe);
       bubble.appendChild(textSpan);
 
       // Распорка-невидимка (spacer), чтобы длинный текст не накладывался на время в правом нижнем углу
@@ -634,6 +787,9 @@
       metaSpan.className = `absolute bottom-1 right-2.5 inline-flex items-center gap-1 text-[10px] select-none font-mono leading-none ${
         isMe ? 'text-blue-200' : 'text-slate-400'
       }`;
+
+      // Превью для медиа (eblo.id, imgur, youtube, прямые картинки)
+      attachMediaPreviews(bubble, metaSpan, urls);
 
       if (timeStr) {
         const timeSpan = document.createElement('span');
