@@ -57,5 +57,19 @@ services:
       - "postgres://${POSTGRES_USER:-didok362}:${POSTGRES_PASSWORD:-qwerty67}@postgres:5432/${POSTGRES_DB:-messenger_db}?sslmode=disable"
       - up
 
+  caddy:
+    image: caddy:alpine
+    container_name: messenger-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    command: caddy reverse-proxy --from leclochard.duckdns.org --to messenger:8080
+
 volumes:
-  pgdata:
+  pgdata: 
+  caddy_data:
+  caddy_config:
