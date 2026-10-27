@@ -1,45 +1,41 @@
 package ws
 
 import (
-	"context"
-	"log"
 	"sync"
 
-	"github.com/didok362/messenger/internal/domain"
 	"github.com/google/uuid"
 )
 
-type chatBroadcast struct {
-	chatID  uuid.UUID
-	payload any
+type BroadcastPayload struct {
+	RecipientIDs []uuid.UUID
+	Payload      any
 }
 
 type Hub struct {
 	// Внешний ключ: UserID. Внутренний: сокет-сессии пользователя (ПК, телефон и т.д.)
-	clients        map[uuid.UUID]map[*Client]bool
-	broadcast      chan *domain.Message
-	broadcastEvent chan *chatBroadcast
-	register       chan *Client
-	unregister     chan *Client
-	chatRepo       domain.ChatRepository
-	mu             sync.RWMutex
+	clients    map[uuid.UUID]map[*Client]bool
+	broadcast  chan BroadcastPayload
+	register   chan *Client
+	unregister chan *Client
+	mu         sync.RWMutex
 }
 
-func NewHub(chatRepo domain.ChatRepository) *Hub {
+func NewHub() *Hub {
 	return &Hub{
-		clients:        make(map[uuid.UUID]map[*Client]bool),
-		broadcast:      make(chan *domain.Message),
-		broadcastEvent: make(chan *chatBroadcast),
-		register:       make(chan *Client),
-		unregister:     make(chan *Client),
-		chatRepo:       chatRepo,
+		clients:    make(map[uuid.UUID]map[*Client]bool),
+		broadcast:  make(chan BroadcastPayload, 256),
+		register:   make(chan *Client),
+		unregister: make(chan *Client),
 	}
 }
 
-func (h *Hub) BroadcastToChat(chatID uuid.UUID, payload any) {
-	h.broadcastEvent <- &chatBroadcast{
-		chatID:  chatID,
-		payload: payload,
+func (h *Hub) Broadcast(recipientIDs []uuid.UUID, payload any) {
+	if len(recipientIDs) == 0 {
+		return
+	}
+	h.broadcast <- BroadcastPayload{
+		RecipientIDs: recipientIDs,
+		Payload:      payload,
 	}
 }
 
@@ -107,32 +103,19 @@ func (h *Hub) Run() {
 					"is_online": false,
 				})
 			}
-		case message := <-h.broadcast:
-			h.sendToChatMembers(message.ChatID, message)
-
-		case event := <-h.broadcastEvent:
-			h.sendToChatMembers(event.chatID, event.payload)
-		}
-	}
-}
-
-func (h *Hub) sendToChatMembers(chatID uuid.UUID, payload any) {
-	memberIDs, err := h.chatRepo.GetChatMemberIDs(context.Background(), chatID)
-	if err != nil {
-		log.Printf("WS Hub: failed to get members for chat %s: %v", chatID, err)
-		return
-	}
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-
-	for _, memberID := range memberIDs {
-		if userConns, ok := h.clients[memberID]; ok {
-			for client := range userConns {
-				select {
-				case client.send <- payload:
-				default:
+		case msg := <-h.broadcast:
+			h.mu.RLock()
+			for _, id := range msg.RecipientIDs {
+				if userConns, ok := h.clients[id]; ok {
+					for client := range userConns {
+						select {
+						case client.send <- msg.Payload:
+						default:
+						}
+					}
 				}
 			}
+			h.mu.RUnlock()
 		}
 	}
 }

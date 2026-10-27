@@ -14,19 +14,20 @@ type ChatService struct {
 	chatRepo domain.ChatRepository
 	msgRepo  domain.MessageRepository
 	userRepo domain.UserRepository
-	presence PresenceChecker
+	hub      ChatHub
 }
 
-type PresenceChecker interface {
+type ChatHub interface {
 	IsUserOnline(userID uuid.UUID) bool
+	Broadcast(recipientIDs []uuid.UUID, payload any)
 }
 
-func NewChatService(chatRepo domain.ChatRepository, msgRepo domain.MessageRepository, userRepo domain.UserRepository, presence PresenceChecker) *ChatService {
+func NewChatService(chatRepo domain.ChatRepository, msgRepo domain.MessageRepository, userRepo domain.UserRepository, hub ChatHub) *ChatService {
 	return &ChatService{
 		chatRepo: chatRepo,
 		msgRepo:  msgRepo,
 		userRepo: userRepo,
-		presence: presence,
+		hub:      hub,
 	}
 }
 
@@ -35,10 +36,10 @@ func (s *ChatService) GetUserChats(ctx context.Context, userID uuid.UUID) ([]*do
 	if err != nil {
 		return nil, fmt.Errorf("Failed to get chats: %w", err)
 	}
-	if s.presence != nil {
+	if s.hub != nil {
 		for _, chat := range chats {
 			if chat.Type == "direct" && chat.DirectUserID != nil {
-				chat.IsOnline = s.presence.IsUserOnline(*chat.DirectUserID)
+				chat.IsOnline = s.hub.IsUserOnline(*chat.DirectUserID)
 			}
 		}
 	}
@@ -96,6 +97,13 @@ func (s *ChatService) SendMessage(ctx context.Context, content string, chatID uu
 	if err != nil {
 		return nil, errors.New("failed to create message")
 	}
+
+	if s.hub != nil {
+		if memberIDs, err := s.chatRepo.GetChatMemberIDs(ctx, chatID); err == nil {
+			s.hub.Broadcast(memberIDs, &msg)
+		}
+	}
+
 	return &msg, nil
 }
 
@@ -154,5 +162,18 @@ func (s *ChatService) MarkChatAsRead(ctx context.Context, chatID, userID uuid.UU
 	if !isMember {
 		return domain.ErrForbidden
 	}
-	return s.chatRepo.MarkAsRead(ctx, chatID, userID)
+	if err := s.chatRepo.MarkAsRead(ctx, chatID, userID); err != nil {
+		return err
+	}
+	// Уведомляем участников, что сообщения прочитаны
+	if s.hub != nil {
+		if memberIDs, err := s.chatRepo.GetChatMemberIDs(ctx, chatID); err == nil {
+			s.hub.Broadcast(memberIDs, map[string]any{
+				"type":      "messages_read",
+				"chat_id":   chatID,
+				"reader_id": userID,
+			})
+		}
+	}
+	return nil
 }

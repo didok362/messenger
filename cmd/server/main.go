@@ -36,7 +36,7 @@ func main() {
 	userRepo := postgres.NewUserRepository(pool)
 	chatRepo := postgres.NewChatRepository(pool)
 	msgRepo := postgres.NewMessageRepository(pool)
-	hub := ws.NewHub(chatRepo)
+	hub := ws.NewHub()
 	go hub.Run()
 	authService := service.NewAuthService(userRepo, cfg.JWTSecret, cfg.JWTTTL)
 	authHandler := transporthttp.NewAuthHandler(authService)

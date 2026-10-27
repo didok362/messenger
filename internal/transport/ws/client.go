@@ -43,11 +43,11 @@ func (c *Client) readPump() {
 		if err := c.conn.ReadJSON(&msg); err != nil {
 			break
 		}
-		savedMsg, err := c.chatService.SendMessage(context.Background(), msg.Content, msg.ChatID, c.userID)
+		_, err := c.chatService.SendMessage(context.Background(), msg.Content, msg.ChatID, c.userID)
 		if err != nil {
 			continue
 		}
-		c.hub.broadcast <- savedMsg
+
 	}
 
 }

@@ -201,13 +201,5 @@ func (h *ChatHandler) MarkAsRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if h.Hub != nil {
-		h.Hub.BroadcastToChat(chatID, map[string]any{
-			"type":      "messages_read",
-			"chat_id":   chatID,
-			"reader_id": userID,
-		})
-	}
-
 	w.WriteHeader(http.StatusOK)
 }
