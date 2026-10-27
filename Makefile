@@ -40,3 +40,6 @@ migrate-status:
 
 migrate-create:
 	@docker compose run --rm --entrypoint goose migrate -dir /migrations create $(name) sql
+
+test:
+	@go test -v -race -cover ./...

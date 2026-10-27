@@ -9,6 +9,8 @@ import (
 type Config struct {
 	HTTPPort  string
 	DB        DBConfig
+	RedisHost string
+	RedisPort string
 	JWTSecret string
 	JWTTTL    time.Duration
 	AssetsDir string
@@ -61,5 +63,11 @@ func Load() *Config {
 		JWTTTL:    ttl,
 		AssetsDir: getEnv("ASSETS_DIR", "assets/avatars"),
 		WebDir:    getEnv("WEB_DIR", "web"),
+		RedisHost: getEnv("REDIS_HOST", "localhost"),
+		RedisPort: getEnv("REDIS_PORT", "6379"),
 	}
+}
+
+func (c *Config) RedisAddr() string {
+	return fmt.Sprintf("%s:%s", c.RedisHost, c.RedisPort)
 }

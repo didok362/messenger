@@ -17,6 +17,7 @@ import (
 	"github.com/didok362/messenger/internal/service"
 	transporthttp "github.com/didok362/messenger/internal/transport/http"
 	"github.com/didok362/messenger/internal/transport/ws"
+	"github.com/redis/go-redis/v9"
 )
 
 func main() {
@@ -36,8 +37,15 @@ func main() {
 	userRepo := postgres.NewUserRepository(pool)
 	chatRepo := postgres.NewChatRepository(pool)
 	msgRepo := postgres.NewMessageRepository(pool)
-	hub := ws.NewHub()
+
+	rdb := redis.NewClient(&redis.Options{
+		Addr: cfg.RedisAddr(),
+	})
+	defer rdb.Close()
+
+	hub := ws.NewHub(rdb)
 	go hub.Run()
+
 	authService := service.NewAuthService(userRepo, cfg.JWTSecret, cfg.JWTTTL)
 	authHandler := transporthttp.NewAuthHandler(authService)
 	chatService := service.NewChatService(chatRepo, msgRepo, userRepo, hub)

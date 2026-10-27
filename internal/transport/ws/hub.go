@@ -1,10 +1,15 @@
 package ws
 
 import (
+	"context"
+	"encoding/json"
 	"sync"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 )
+
+const redisChannel = "messenger:broadcast"
 
 type BroadcastPayload struct {
 	RecipientIDs []uuid.UUID
@@ -17,25 +22,55 @@ type Hub struct {
 	broadcast  chan BroadcastPayload
 	register   chan *Client
 	unregister chan *Client
+	rdb        *redis.Client
 	mu         sync.RWMutex
 }
 
-func NewHub() *Hub {
-	return &Hub{
+func NewHub(rdb *redis.Client) *Hub {
+	h := &Hub{
 		clients:    make(map[uuid.UUID]map[*Client]bool),
 		broadcast:  make(chan BroadcastPayload, 256),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
+		rdb:        rdb,
 	}
+
+	if rdb != nil {
+		go h.subscribeRedis()
+	}
+
+	return h
 }
 
 func (h *Hub) Broadcast(recipientIDs []uuid.UUID, payload any) {
 	if len(recipientIDs) == 0 {
 		return
 	}
-	h.broadcast <- BroadcastPayload{
+
+	msg := BroadcastPayload{
 		RecipientIDs: recipientIDs,
 		Payload:      payload,
+	}
+
+	if h.rdb != nil {
+		if data, err := json.Marshal(msg); err == nil {
+			_ = h.rdb.Publish(context.Background(), redisChannel, data).Err()
+			return
+		}
+	}
+
+	h.broadcast <- msg
+}
+
+func (h *Hub) subscribeRedis() {
+	pubsub := h.rdb.Subscribe(context.Background(), redisChannel)
+	defer pubsub.Close()
+	ch := pubsub.Channel()
+	for msg := range ch {
+		var payload BroadcastPayload
+		if err := json.Unmarshal([]byte(msg.Payload), &payload); err == nil {
+			h.broadcast <- payload
+		}
 	}
 }
 

@@ -34,12 +34,17 @@ services:
       JWT_TTL: ${JWT_TTL:-24h}
       ASSETS_DIR: assets/avatars
       WEB_DIR: web
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
     ports:
       - "${HTTP_PORT:-8080}:8080"
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_started
     restart: unless-stopped
+    
 
   migrate:
     image: gomicro/goose:latest
@@ -69,6 +74,13 @@ services:
       - caddy_config:/config
     command: caddy reverse-proxy --from leclochard.duckdns.org --to messenger:8080
 
+  redis:
+    image: redis:7-alpine
+    container_name: messenger-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    restart: unless-stopped
+ 
 volumes:
   pgdata: 
   caddy_data:
