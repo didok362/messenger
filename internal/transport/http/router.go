@@ -6,6 +6,7 @@ import (
 	"github.com/didok362/messenger/internal/transport/ws"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func NewRouter(authHandler *AuthHandler, chatHandler *ChatHandler, wsHandler *ws.Handler, userHandler *UserHandler, jwtSecret []byte) *chi.Mux {
@@ -13,7 +14,8 @@ func NewRouter(authHandler *AuthHandler, chatHandler *ChatHandler, wsHandler *ws
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
-
+	r.Use(MetricsMiddleware)
+	r.Handle("/metrics", promhttp.Handler())
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "web/index.html")
 	})

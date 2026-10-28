@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"sync"
+	"time"
 
+	"github.com/didok362/messenger/internal/metrics"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )
@@ -97,7 +99,9 @@ func (h *Hub) Run() {
 	for {
 		select {
 		case client := <-h.register:
+			metrics.WebSocketActiveConnections.Inc()
 			h.mu.Lock()
+
 			wasOffline := len(h.clients[client.userID]) == 0
 			userConns := h.clients[client.userID]
 			if userConns == nil {
@@ -115,6 +119,7 @@ func (h *Hub) Run() {
 			}
 
 		case client := <-h.unregister:
+			metrics.WebSocketActiveConnections.Dec()
 			h.mu.Lock()
 			wentOffline := false
 			if userConns, ok := h.clients[client.userID]; ok {
@@ -139,6 +144,7 @@ func (h *Hub) Run() {
 				})
 			}
 		case msg := <-h.broadcast:
+			start := time.Now()
 			h.mu.RLock()
 			for _, id := range msg.RecipientIDs {
 				if userConns, ok := h.clients[id]; ok {
@@ -151,6 +157,7 @@ func (h *Hub) Run() {
 				}
 			}
 			h.mu.RUnlock()
+			metrics.WebSocketBroadcastDuration.Observe(time.Since(start).Seconds())
 		}
 	}
 }

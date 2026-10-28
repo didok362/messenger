@@ -4,8 +4,13 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
+	"github.com/didok362/messenger/internal/metrics"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
@@ -64,4 +69,25 @@ func AuthMiddleware(jwtSecret []byte) func(http.Handler) http.Handler {
 func UserIDFromContext(ctx context.Context) (uuid.UUID, bool) {
 	id, ok := ctx.Value(UserIDKey).(uuid.UUID)
 	return id, ok
+}
+
+func MetricsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+
+		// 1. Оборачиваем ResponseWriter, чтобы поймать HTTP статус (200, 400, 500)
+		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
+		// 2. Пропускаем запрос дальше к нашему хэндлеру
+		next.ServeHTTP(ww, r)
+		// 3. Достаем шаблон пути (/api/v1/chats/{id}), чтобы не плодить миллионы метрик с UUID
+		path := r.URL.Path
+		if rctx := chi.RouteContext(r.Context()); rctx != nil && rctx.RoutePattern() != "" {
+			path = rctx.RoutePattern()
+		}
+		duration := time.Since(start).Seconds()
+		status := strconv.Itoa(ww.Status())
+		// 4. Записываем в метрики
+		metrics.HTTPRequestsTotal.WithLabelValues(r.Method, path, status).Inc()
+		metrics.HTTPRequestDuration.WithLabelValues(r.Method, path).Observe(duration)
+	})
 }
