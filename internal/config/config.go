@@ -3,18 +3,21 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 )
 
 type Config struct {
-	HTTPPort  string
-	DB        DBConfig
-	RedisHost string
-	RedisPort string
-	JWTSecret string
-	JWTTTL    time.Duration
-	AssetsDir string
-	WebDir    string
+	HTTPPort           string
+	DB                 DBConfig
+	RedisHost          string
+	RedisPort          string
+	JWTSecret          string
+	JWTTTL             time.Duration
+	AssetsDir          string
+	WebDir             string
+	KafkaBrokers       string
+	KafkaTopicMessages string
 }
 
 type DBConfig struct {
@@ -57,17 +60,23 @@ func Load() *Config {
 	}
 
 	return &Config{
-		HTTPPort:  getEnv("HTTP_PORT", "8080"),
-		DB:        DB,
-		JWTSecret: getEnv("JWT_SECRET", "super-secret-jwt-key"),
-		JWTTTL:    ttl,
-		AssetsDir: getEnv("ASSETS_DIR", "assets/avatars"),
-		WebDir:    getEnv("WEB_DIR", "web"),
-		RedisHost: getEnv("REDIS_HOST", "localhost"),
-		RedisPort: getEnv("REDIS_PORT", "6379"),
+		HTTPPort:           getEnv("HTTP_PORT", "8080"),
+		DB:                 DB,
+		JWTSecret:          getEnv("JWT_SECRET", "super-secret-jwt-key"),
+		JWTTTL:             ttl,
+		AssetsDir:          getEnv("ASSETS_DIR", "assets/avatars"),
+		WebDir:             getEnv("WEB_DIR", "web"),
+		RedisHost:          getEnv("REDIS_HOST", "localhost"),
+		RedisPort:          getEnv("REDIS_PORT", "6379"),
+		KafkaBrokers:       getEnv("KAFKA_BROKERS", "localhost:9092"),
+		KafkaTopicMessages: getEnv("KAFKA_TOPIC_MESSAGES", "chat.messages"),
 	}
 }
 
 func (c *Config) RedisAddr() string {
 	return fmt.Sprintf("%s:%s", c.RedisHost, c.RedisPort)
+}
+
+func (c *Config) KafkaBrokersList() []string {
+	return strings.Split(c.KafkaBrokers, ",")
 }

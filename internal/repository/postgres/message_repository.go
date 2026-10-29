@@ -85,3 +85,18 @@ func (r *MessageRepository) GetByChatID(ctx context.Context, chatID uuid.UUID, l
 
 	return msgs, nil
 }
+
+func (r *MessageRepository) CreateWithID(ctx context.Context, msg *domain.Message) error {
+	query := `
+		INSERT INTO messages (id, chat_id, sender_id, content, created_at)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (id) DO NOTHING
+	`
+
+	_, err := r.pool.Exec(ctx, query, msg.ID, msg.ChatID, msg.SenderID, msg.Content, msg.CreatedAt)
+	if err != nil {
+		return fmt.Errorf("failed to save message with id: %w", err)
+	}
+
+	return nil
+}

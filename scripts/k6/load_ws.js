@@ -64,8 +64,11 @@ export default function (data) {
     JSON.stringify({ target_user_id: data.targetUserID }),
     authHeaders
   );
-  const chatID = chatRes.json('id');
-  if (!chatID) return;
+  const chatID = chatRes.json('chat.id') || chatRes.json('id');
+  if (!chatID) {
+    console.log('Failed to create chat:', chatRes.status, chatRes.body);
+    return;
+  }
 
   // В) Подключаемся к WebSocket и держим сокет открытым
   const url = `${WS_URL}/api/v1/ws?token=${token}`;

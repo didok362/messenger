@@ -5,16 +5,23 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/didok362/messenger/internal/domain"
+	"github.com/didok362/messenger/internal/events"
 	"github.com/google/uuid"
 )
+
+type MessageEventPublisher interface {
+	PublishMessageCreated(ctx context.Context, event *events.MessageCreatedEvent) error
+}
 
 type ChatService struct {
 	chatRepo domain.ChatRepository
 	msgRepo  domain.MessageRepository
 	userRepo domain.UserRepository
 	hub      ChatHub
+	producer MessageEventPublisher
 }
 
 type ChatHub interface {
@@ -22,13 +29,17 @@ type ChatHub interface {
 	Broadcast(recipientIDs []uuid.UUID, payload any)
 }
 
-func NewChatService(chatRepo domain.ChatRepository, msgRepo domain.MessageRepository, userRepo domain.UserRepository, hub ChatHub) *ChatService {
-	return &ChatService{
+func NewChatService(chatRepo domain.ChatRepository, msgRepo domain.MessageRepository, userRepo domain.UserRepository, hub ChatHub, producer ...MessageEventPublisher) *ChatService {
+	s := &ChatService{
 		chatRepo: chatRepo,
 		msgRepo:  msgRepo,
 		userRepo: userRepo,
 		hub:      hub,
 	}
+	if len(producer) > 0 {
+		s.producer = producer[0]
+	}
+	return s
 }
 
 func (s *ChatService) GetUserChats(ctx context.Context, userID uuid.UUID) ([]*domain.ChatPreview, error) {
@@ -80,30 +91,47 @@ func (s *ChatService) SendMessage(ctx context.Context, content string, chatID uu
 	if !isMember {
 		return nil, errors.New("You are not a member")
 	}
-
 	user, err := s.userRepo.GetByID(ctx, senderID)
 	if err != nil {
-		return nil, errors.New("Failed to fecth user")
+		return nil, errors.New("Failed to fetch user")
 	}
-
+	memberIDs, err := s.chatRepo.GetChatMemberIDs(ctx, chatID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get members: %w", err)
+	}
+	now := time.Now().UTC()
 	msg := domain.Message{
+		ID:             uuid.New(), // Генерируем UUID прямо в Go
 		ChatID:         chatID,
 		SenderID:       &senderID,
 		Content:        content,
 		SenderUsername: user.Username,
+		CreatedAt:      now,
 	}
-
+	// Если Kafka подключена — отправляем событие в стрим и сразу возвращаем ответ!
+	if s.producer != nil {
+		event := events.MessageCreatedEvent{
+			ID:             msg.ID,
+			ChatID:         msg.ChatID,
+			SenderID:       msg.SenderID,
+			SenderUsername: msg.SenderUsername,
+			Content:        msg.Content,
+			RecipientIDs:   memberIDs,
+			CreatedAt:      msg.CreatedAt,
+		}
+		if err := s.producer.PublishMessageCreated(ctx, &event); err != nil {
+			return nil, fmt.Errorf("failed to publish message event: %w", err)
+		}
+		return &msg, nil
+	}
+	// Фоллбэк (если Kafka отключена): старая синхронная запись в БД
 	err = s.msgRepo.Create(ctx, &msg)
 	if err != nil {
 		return nil, errors.New("failed to create message")
 	}
-
 	if s.hub != nil {
-		if memberIDs, err := s.chatRepo.GetChatMemberIDs(ctx, chatID); err == nil {
-			s.hub.Broadcast(memberIDs, &msg)
-		}
+		s.hub.Broadcast(memberIDs, &msg)
 	}
-
 	return &msg, nil
 }
 

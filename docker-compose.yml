@@ -37,12 +37,16 @@ services:
       WEB_DIR: web
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      KAFKA_BROKERS: ${KAFKA_BROKERS:-redpanda:29092}
+      KAFKA_TOPIC_MESSAGES: ${KAFKA_TOPIC_MESSAGES:-chat.messages}
     ports:
       - "${HTTP_PORT:-8080}:8080"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_started
+      redpanda:
         condition: service_started
     restart: unless-stopped
     
@@ -106,8 +110,40 @@ services:
     depends_on:
       - prometheus
     restart: unless-stopped
+
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.14
+    container_name: messenger-redpanda
+    command:
+      - redpanda
+      - start
+      - --smp 1              # выделяем 1 ядро
+      - --memory 256M        # лимит 256 МБ RAM
+      - --reserve-memory 0M
+      - --overprovisioned
+      - --node-id 0
+      - --check=false
+      - --kafka-addr PLAINTEXT://0.0.0.0:29092,OUTSIDE://0.0.0.0:9092
+      - --advertise-kafka-addr PLAINTEXT://redpanda:29092,OUTSIDE://localhost:9092
+    ports:
+      - "9092:9092"
+      - "9644:9644"
+    volumes:
+      - redpanda_data:/var/lib/redpanda/data
+    restart: unless-stopped
+  console:
+    image: docker.redpanda.com/redpandadata/console:latest
+    container_name: messenger-console
+    environment:
+      KAFKA_BROKERS: redpanda:29092
+    ports:
+      - "8085:8080"
+    depends_on:
+      - redpanda
+    restart: unless-stopped
 volumes:
   pgdata: 
   caddy_data:
   caddy_config:
   grafana_data:
+  redpanda_data: 

@@ -13,6 +13,7 @@ import (
 
 	"github.com/didok362/messenger/internal/avatar"
 	"github.com/didok362/messenger/internal/config"
+	"github.com/didok362/messenger/internal/events"
 	"github.com/didok362/messenger/internal/repository/postgres"
 	"github.com/didok362/messenger/internal/service"
 	transporthttp "github.com/didok362/messenger/internal/transport/http"
@@ -25,6 +26,9 @@ func main() {
 	defer stop()
 
 	cfg := config.Load()
+
+	kafkaProducer := events.NewProducer(cfg.KafkaBrokersList(), cfg.KafkaTopicMessages)
+	defer kafkaProducer.Close()
 
 	// 1. Подключение к БД
 	pool, err := postgres.New(ctx, cfg.DB.ConnectionString())
@@ -48,9 +52,12 @@ func main() {
 
 	authService := service.NewAuthService(userRepo, cfg.JWTSecret, cfg.JWTTTL)
 	authHandler := transporthttp.NewAuthHandler(authService)
-	chatService := service.NewChatService(chatRepo, msgRepo, userRepo, hub)
+	chatService := service.NewChatService(chatRepo, msgRepo, userRepo, hub, kafkaProducer)
 	chatHandler := transporthttp.NewChatHandler(chatService, hub)
 	avatarGen, err := avatar.NewGenerator(cfg.AssetsDir)
+
+	events.StartWSDeliveryConsumer(ctx, cfg.KafkaBrokersList(), cfg.KafkaTopicMessages, hub)
+	events.StartDBArchiverConsumer(ctx, cfg.KafkaBrokersList(), cfg.KafkaTopicMessages, msgRepo)
 
 	if err != nil {
 		log.Fatalf("Failed to connect to find assets: %v", err)
