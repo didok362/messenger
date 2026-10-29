@@ -21,7 +21,8 @@ tunnel:
 	@cloudflared tunnel --url http://localhost:8080
 
 deploy: 
-	@docker compose up -d --build
+	@docker compose pull messenger
+	@docker compose up -d
 
 undeploy:
 	@docker compose down

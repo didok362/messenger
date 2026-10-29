@@ -18,6 +18,7 @@ services:
     restart: unless-stopped
 
   messenger:
+    image: ghcr.io/didok362/messenger:latest
     build:
       context: .
       dockerfile: Dockerfile
